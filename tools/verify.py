@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Unified verification tool: check_tree, make-tree-view, and lint_prose in one call.
+"""Unified verification tool: check_tree, make-tree-view, lint_prose and check_tasks in one call.
 
 Usage:
-    python3 tools/verify.py            # runs all 3 checks with standard options
+    python3 tools/verify.py            # runs all 4 checks with standard options
     python3 tools/verify.py --sources  # forwards --sources to check_tree.py
     python3 tools/verify.py --rev A..B # forwards --rev to lint_prose.py
 """
@@ -59,6 +59,14 @@ def main():
         print(out_lint)
     if code_lint != 0:
         print("[FAIL] lint_prose.py flagged prohibited certainty words or formatting.")
+        failed = True
+
+    # Step 4: check_tasks.py (the work queue's tables, stale claims, duplicate rows)
+    code_tasks, out_tasks = run_step("check_tasks", ["python3", "tools/check_tasks.py"])
+    if out_tasks:
+        print(out_tasks)
+    if code_tasks != 0:
+        print("[FAIL] check_tasks.py found broken tables in tasks.md.")
         failed = True
 
     if failed:

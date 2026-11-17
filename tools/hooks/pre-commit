@@ -6,8 +6,10 @@ Enabled once per clone with:  git config core.hooksPath tools/hooks
 Blocks the commit only when the staged tree.ged has errors from
 tools/check_tree.py (broken links, people not connected to the root person, cited files
 that do not exist). Everything else is printed as a warning and does not block:
-EVIDENCE warnings, tools/lint_prose.py hits, and files in sources/ that the
-staged tree.ged cites but that are neither committed nor staged.
+EVIDENCE warnings, tools/lint_prose.py hits, files in sources/ that the
+staged tree.ged cites but that are neither committed nor staged, broken
+tables in a staged tasks.md, and a research-log.md change with no tasks.md
+change.
 
 A blocked commit loses nothing: the files and the staging area stay as they
 were. Fix the error and commit again. Do not bypass the hook with --no-verify,
@@ -62,6 +64,15 @@ hits = [l for l in lint.stdout.splitlines() if not l.startswith("lint_prose:")]
 if hits:
     print(f"(note) lint_prose: {len(hits)} lines flagged in staged changes; reword unless quoted record text:")
     print("\n".join("  " + h for h in hits[:15]) + ("\n  ..." if len(hits) > 15 else ""))
+
+if "tasks.md" in staged:
+    run = subprocess.run([sys.executable, "tools/check_tasks.py"], capture_output=True, text=True)
+    for l in run.stdout.splitlines():
+        if l.startswith("ERROR"):
+            print("(note) tasks.md: " + l)
+elif "research-log.md" in staged:
+    print("(note) research-log.md changed but tasks.md did not; if this work finishes, advances or "
+          "starts a task, update its row in tasks.md in this commit")
 
 if blocked:
     print("\nCommit blocked: tree.ged has errors (above). Nothing has been lost; your files and staging are unchanged.\n"

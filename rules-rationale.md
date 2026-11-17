@@ -43,3 +43,7 @@ Batched searches on one subscription site brought rate limits, error pages and d
 ## Images checked before naming, crops checked after cropping
 
 A mislabelled image was saved under the wrong person's name, and crops were saved that showed a blank margin or the wrong passengers. Opening the image before naming it, and quoting the entry's first words from the crop, catches both.
+
+## A work queue that stays true
+
+In a project run by several agents over weeks, the queue drifted: one person collected seven rows added on different days, results reached the research log but not the task row, claims by agents that had moved on stood for ten days, and rows appended at the end of the file or after a blank line fell out of their tables, so their status cells did not display. Agents then picked up work that was already done. Searching before adding, updating the row in the same commit as the log, letting claims lapse, and `tools/check_tasks.py` in `verify.py` and the commit hook address each of these.

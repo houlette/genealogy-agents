@@ -11,6 +11,7 @@ Whatever the end product, aim for a narrative family history with as much histor
 - `tree.ged`: the canonical database, GEDCOM 5.5, UTF-8. A large tree does not fit in an agent's context, so do not read it whole: use `python3 tools/person.py @I54@` (or a surname) to see one person with their parents, spouses and children and the line numbers to edit.
 - `make-tree-view.py` and `tree-view.template.html` build `tree-view.html`, the viewer. Never edit `tree-view.html` by hand. It holds living relatives' details, so it is git-ignored and never published.
 - `tools/check_tree.py`: the shared check: links, connectivity to the root person, impossible ages, missing cited files, `EVIDENCE` warnings, next free IDs.
+- `tools/check_tasks.py`: checks `tasks.md`: rows that do not display because a blank line or a wrong number of cells breaks the table, "in progress" claims more than three days old, and a person named in more than one open row.
 - `tools/lint_prose.py`: flags certainty words ("proves", "verified", "resolved", "exhaustive" and others), em dashes, and negative results marked "done" in the lines you added.
 - `tools/frontier.py`: the root person's direct ancestors whose parents are not yet in the tree, with warning flags; the reserve list for new tasks.
 - `tools/living.py`: people who may be living, who must not appear in anything published.
@@ -41,7 +42,7 @@ None of the agents remembers the others' sessions, so the repository carries the
 
 The main session plans, writes briefs, reviews, makes the structural edits to `tree.ged` and decides disputes. Workers retrieve documents and read handwriting. Old handwriting is read blind by two readers from different vendors, with each disagreement recorded rather than chosen. A negative result or new link counts as settled only after a model from a different vendor checks it. Before you send work out, or if you are a worker unsure what you may do, read `rules-routing.md`, which gives the kind of model for each kind of work, and `PROJECT.md`, which says which models and accounts this project has.
 
-Take the highest open task in `tasks.md` that suits you, mark it "in progress" with your name and the date, and when you finish set it to "for review" or "done" with the commit hash. Anything that adds a generation, changes a parent-child link, or claims a negative result across a whole record set stays "for review", with a `NOTE` beginning `For review:` in `tree.ged`, until a different agent has checked it (never the agent that ran the search). The weekly review procedure is in `rules-routing.md`.
+Take the highest open task in `tasks.md` that suits you, mark it "in progress" with your name and the date, and when you finish set it to "for review" or "done" with the commit hash. Keep the queue true to the work: before adding a task, search `tasks.md` for the person's ID and surname and extend the row you find rather than adding a second one; update a task's row in the same commit that records its result in `research-log.md`, even when the result is partial or negative; a claim lapses after three days without an update, and anyone may release it, saying so in the row; and add a row inside its section's table, never after a blank line or at the end of the file. `python3 tools/check_tasks.py` (part of `tools/verify.py`) finds the mechanical faults. Anything that adds a generation, changes a parent-child link, or claims a negative result across a whole record set stays "for review", with a `NOTE` beginning `For review:` in `tree.ged`, until a different agent has checked it (never the agent that ran the search). The weekly review procedure is in `rules-routing.md`.
 
 ## Evidence rules
 
@@ -112,7 +113,7 @@ These rules decide when a person's parents go into the tree. Knowing the person'
 - Use `AFT` for a death only when a record shows the person alive at that date; a parent merely named in a deed is not proof of life. When the death date is unknown but the person is certainly dead, write `1 DEAT Y` with a `NOTE`.
 - After every change, run the checks and report their output:
   ```bash
-  python3 tools/verify.py   # check_tree.py, make-tree-view.py and lint_prose.py in one step
+  python3 tools/verify.py   # check_tree.py, make-tree-view.py, lint_prose.py and check_tasks.py in one step
   ```
   `check_tree.py` must end with 0 errors; review its warnings and the sources line, and fix the `EVIDENCE` warnings on any fact you touched. Reword each `lint_prose.py` hit, or leave it if it is quoted record text.
 - Never delete an existing citation, docstring, or documented negative result.
