@@ -195,6 +195,8 @@ class Hooks(Repo):
         self.assertNotIn("(note) commit message", r.stdout + r.stderr)
 
 
+@unittest.skipUnless(os.path.exists(os.path.join(support.FRAMEWORK, "framework.json")),
+                     "runs only in the framework repository, not in a synced project")
 class LintProseNewProject(unittest.TestCase):
     """A project just made by framework_sync init: no commits yet, framework text untouched."""
 
