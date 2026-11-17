@@ -214,6 +214,8 @@ class Sync(unittest.TestCase):
         self.assertEqual(self.lock()["commit"], head)
 
 
+@unittest.skipUnless(os.path.exists(os.path.join(support.FRAMEWORK, "framework.json")),
+                     "runs only in the framework repository, not in a synced project")
 class RealManifest(unittest.TestCase):
     """The framework's own framework.json names files that exist and holds no project data."""
 
