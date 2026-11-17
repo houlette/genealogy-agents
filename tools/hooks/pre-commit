@@ -1,0 +1,70 @@
+#!/usr/bin/env python3
+"""Pre-commit check for every agent.
+
+Enabled once per clone with:  git config core.hooksPath tools/hooks
+
+Blocks the commit only when the staged tree.ged has errors from
+tools/check_tree.py (broken links, people not connected to the root person, cited files
+that do not exist). Everything else is printed as a warning and does not block:
+EVIDENCE warnings, tools/lint_prose.py hits, and files in sources/ that the
+staged tree.ged cites but that are neither committed nor staged.
+
+A blocked commit loses nothing: the files and the staging area stay as they
+were. Fix the error and commit again. Do not bypass the hook with --no-verify,
+and do not revert or discard work to get past it. If you cannot fix the error,
+say so in research-log.md and leave the work uncommitted for the next agent.
+"""
+import os
+import re
+import subprocess
+import sys
+
+ROOT = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip()
+os.chdir(ROOT)
+
+
+def git(*args):
+    return subprocess.run(["git", *args], capture_output=True, text=True).stdout
+
+
+staged = git("diff", "--cached", "--name-only").split()
+blocked = False
+
+if "tree.ged" in staged:
+    # Check the staged version, written beside the real file so sources/ paths resolve.
+    tmp = os.path.join(ROOT, ".tree-staged.ged")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(subprocess.run(["git", "show", ":tree.ged"], capture_output=True).stdout.decode("utf-8"))
+    try:
+        run = subprocess.run([sys.executable, "tools/check_tree.py", tmp], capture_output=True, text=True)
+    finally:
+        os.remove(tmp)
+    lines = run.stdout.splitlines()
+    errors = [l for l in lines if l.startswith("ERROR")]
+    evidence = [l for l in lines if l.startswith("EVIDENCE")]
+    for l in errors:
+        print(l)
+    print("\n".join(l for l in lines if not l.startswith(("ERROR", "EVIDENCE", "WARNING"))))
+    if evidence:
+        print(f"(note) {len(evidence)} EVIDENCE warnings; run python3 tools/check_tree.py and fix those on facts you touched")
+    if run.returncode != 0:
+        blocked = True
+
+    # Cited files that would not be in the commit.
+    cited = set(re.findall(r"sources/[^\s;,)`]+", git("show", ":tree.ged")))
+    tracked = set(git("ls-files", "sources").split()) | {s for s in staged if s.startswith("sources/")}
+    missing = sorted(f.rstrip(".") for f in cited if f.rstrip(".") not in tracked and os.path.exists(f.rstrip(".")))
+    for f in missing:
+        print(f"(note) tree.ged cites {f}, which is not committed or staged; git add it")
+
+lint = subprocess.run([sys.executable, "tools/lint_prose.py", "--rev", "--cached"], capture_output=True, text=True)
+hits = [l for l in lint.stdout.splitlines() if not l.startswith("lint_prose:")]
+if hits:
+    print(f"(note) lint_prose: {len(hits)} lines flagged in staged changes; reword unless quoted record text:")
+    print("\n".join("  " + h for h in hits[:15]) + ("\n  ..." if len(hits) > 15 else ""))
+
+if blocked:
+    print("\nCommit blocked: tree.ged has errors (above). Nothing has been lost; your files and staging are unchanged.\n"
+          "Fix the errors and commit again. Do not use --no-verify, and do not revert work to get past this.")
+    sys.exit(1)
+sys.exit(0)

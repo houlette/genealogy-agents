@@ -1,0 +1,13 @@
+{
+  "_note": "Settings read by the tools (tools/project_config.py). See AGENTS.md and the framework README.",
+  "owner": "the project owner",
+  "root": "@I1@",
+  "tree": "tree.ged",
+  "living_cutoff": null,
+  "keyfile": "~/.config/genealogy-agents.env",
+  "bridge": {
+    "port": 9333,
+    "profile": null,
+    "downloads": "~/Downloads"
+  }
+}

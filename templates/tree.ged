@@ -1,0 +1,10 @@
+0 HEAD
+1 SOUR genealogy-agents
+1 GEDC
+2 VERS 5.5.1
+2 FORM LINEAGE-LINKED
+1 CHAR UTF-8
+0 @I1@ INDI
+1 NAME Root /Person/
+1 NOTE Replace this placeholder with the root person (normally the owner), keeping the ID @I1@ or changing "root" in project.json.
+0 TRLR

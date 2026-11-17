@@ -1,0 +1,18 @@
+[
+  {
+    "id": "example-1709",
+    "skip": "Example entry showing the format; replace it with crops of this project's own records. Each key item is one field the reference reading found, with spelling alternatives separated by |.",
+    "crop": "sources/1709-03-30-baptism-Musterdorf-Johann-Georg-Schmidt-crop.jpg",
+    "page": "sources/1709-03-30-baptism-Musterdorf-Johann-Georg-Schmidt.jpg",
+    "script": "kurrent-early",
+    "language": "German (Kurrent)",
+    "register": "Lutheran church book, baptisms",
+    "place": "Musterdorf, Hesse",
+    "year": "1709",
+    "focus": "entry no. 4",
+    "key": ["Peter Schmidt", "Johann Georg|Johan Georg|Johann Görg", "29", "30", "Anna Maria"],
+    "expect": ["father: Peter Schmidt", "child: Johann Georg"],
+    "decoy": "mother: Anna Margaretha",
+    "key_status": "who made the reference reading, and when"
+  }
+]

@@ -1,0 +1,12 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.claude/settings.local.json
+*.local.json
+tools/browser_bridge/claims*.json
+tools/browser_bridge/claims*.json.tmp
+usage-ledger.jsonl
+scratch/
+tree-view.html

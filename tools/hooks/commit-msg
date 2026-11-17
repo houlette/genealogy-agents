@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Lint the commit message for certainty words and em dashes. Warns only; never blocks."""
+import subprocess, sys
+msg = sys.argv[1]
+body = [l for l in open(msg, encoding="utf-8") if not l.startswith("#") and not l.startswith("Co-Authored-By")]
+tmp = msg + ".lint"
+open(tmp, "w", encoding="utf-8").writelines(body)
+out = subprocess.run([sys.executable, "tools/lint_prose.py", "--rev", "--cached", "--only-message", tmp],
+                     capture_output=True, text=True).stdout
+hits = [l for l in out.splitlines() if l.startswith("commit message")]
+if hits:
+    print("(note) commit message: " + "; ".join(h.split(": ", 2)[1] for h in hits) + ". Consider rewording; the commit goes ahead.")
+sys.exit(0)

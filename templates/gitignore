@@ -1,0 +1,27 @@
+# Operating system files
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Built viewer: it holds living relatives' details
+tree-view.html
+
+# Local configuration
+.claude/settings.local.json
+*.local.json
+.tree-staged.ged
+
+# Browser bridge claim state
+tools/browser_bridge/claims*.json
+tools/browser_bridge/claims*.json.tmp
+
+# Worker scratch files and model run logs
+scratch/
+tools/bakeoff/run.log
+tools/bakeoff/run.lock
+tools/bakeoff/crop-sheet.html

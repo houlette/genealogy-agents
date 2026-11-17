@@ -1,0 +1,43 @@
+{
+  "_note": "Which files tools/framework_sync.py manages. 'owned' files belong to the framework and are updated in a project on sync, unless the project has changed them. 'seeds' are copied into a project once, at init or when missing, and then belong to the project.",
+  "name": "genealogy-agents",
+  "owned": [
+    "AGENTS.md",
+    "rules-routing.md",
+    "rules-browser.md",
+    "rules-archival-extinction.md",
+    "rules-rationale.md",
+    "make-tree-view.py",
+    "tree-view.template.html",
+    "tools/*.py",
+    "tools/models.json",
+    "tools/hooks/*",
+    "tools/browser_bridge/*.py",
+    "tools/browser_bridge/README.md",
+    ".claude/agents/*.md",
+    ".claude/hooks/*.py",
+    "tests/*.py",
+    "tests/fixtures/*"
+  ],
+  "seeds": {
+    "templates/PROJECT.md": "PROJECT.md",
+    "templates/project.json": "project.json",
+    "templates/CLAUDE.md": "CLAUDE.md",
+    "templates/GEMINI.md": "GEMINI.md",
+    "templates/rules-access.md": "rules-access.md",
+    "templates/tree.ged": "tree.ged",
+    "templates/tasks.md": "tasks.md",
+    "templates/research-log.md": "research-log.md",
+    "templates/open-questions.md": "open-questions.md",
+    "templates/sources-index.md": "sources-index.md",
+    "templates/story-leads.md": "story-leads.md",
+    "templates/familysearch-lookup-requests.md": "familysearch-lookup-requests.md",
+    "templates/biographies.md": "biographies.md",
+    "templates/research-plan.md": "research-plan.md",
+    "templates/sources/README.md": "sources/README.md",
+    "templates/gitignore": ".gitignore",
+    "templates/.claude/settings.json": ".claude/settings.json",
+    "tools/browser_bridge/site-notes.md": "tools/browser_bridge/site-notes.md",
+    "templates/tools/bakeoff/entries.json": "tools/bakeoff/entries.json"
+  }
+}
