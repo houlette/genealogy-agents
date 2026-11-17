@@ -25,3 +25,8 @@ scratch/
 tools/bakeoff/run.log
 tools/bakeoff/run.lock
 tools/bakeoff/crop-sheet.html
+
+# Family website build output and the sign-in app's local test data (tools/build_site.py, family-app/)
+site/
+private/
+family-app/data/

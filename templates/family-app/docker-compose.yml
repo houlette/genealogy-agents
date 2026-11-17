@@ -1,0 +1,36 @@
+# The sign-in app. Copy family-app/ to the server (deploy.sh does this), then:
+#   cd ~/family/app && docker compose --env-file /etc/family.env up -d --build
+# Values in ${...} come from /etc/family.env (template: family.env.example).
+name: family
+services:
+  api:
+    # A fixed name, so the web server (Caddy) can reach it over the shared `web` network.
+    container_name: family-api
+    build: .
+    restart: unless-stopped
+    volumes:
+      - ${DATA_HOST_DIR:-/data/family}:/data              # family.db (readers, requests, sessions) and uploads
+      - ${FAMILY_HOST_DIR}/private:/private:ro             # private.json and img/, from tools/build_site.py
+      - ${FAMILY_HOST_DIR}/site:/site:ro                   # public.json: names, settings, the admin's person picker
+    environment:
+      - BASE_URL=${BASE_URL}
+      - DATA_DIR=/data
+      - PRIVATE_DIR=/private
+      - SITE_DIR=
+      - PUBLIC_JSON=/site/data/public.json
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PERSON=${ADMIN_PERSON:-}
+      - OWNER_NAME=${OWNER_NAME:-}
+      - EMAIL_BACKEND=${EMAIL_BACKEND:-console}
+      - MAIL_FROM=${MAIL_FROM}
+      - REPLY_TO=${ADMIN_EMAIL}
+      - SES_REGION=${SES_REGION:-us-east-1}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
+    name: web

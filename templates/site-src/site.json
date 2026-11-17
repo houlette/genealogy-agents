@@ -1,0 +1,73 @@
+{
+ "_note": "Settings for the family website (tools/build_site.py, site-src/app.js, family-app/). Keys you leave out take the defaults in tools/build_site.py; see site-src/README.md for what each one does. Patterns are regular expressions that must work in both Python and JavaScript.",
+ "name": "Our Family History",
+ "owner_name": null,
+ "root_name": null,
+ "story_footer": "",
+ "history_footer": "",
+ "origins_note": "",
+ "request_example": "for example, \"Aunt Carol's daughter\"",
+ "regions": [
+  ["France", "fr"],
+  ["Germany|Deutschland|Prussia|Heiliges", "de"],
+  ["Poland|Polska", "pl"],
+  ["Ireland", "ie"],
+  ["Scotland", "sco"],
+  ["England", "eng"],
+  ["Wales", "wal"],
+  ["Netherlands|Holland", "nl"],
+  ["Italy|Italia", "it"],
+  ["Sweden|Norway|Denmark", "scand"],
+  ["Canada", "ca"],
+  ["USA|America", "us"]
+ ],
+ "countries": [
+  {
+   "label": "America",
+   "match": "USA|America",
+   "color": 1
+  },
+  {
+   "label": "France",
+   "match": "France",
+   "color": 2
+  },
+  {
+   "label": "Germany",
+   "match": "Germany|Deutschland|Prussia|Heiliges",
+   "color": 3
+  },
+  {
+   "label": "Britain and Ireland",
+   "match": "Ireland|Scotland|England|Wales",
+   "color": 4
+  },
+  {
+   "label": "Poland",
+   "match": "Poland|Polska",
+   "color": 5
+  }
+ ],
+ "geocode_rewrites": [
+  ["^\\d[^,]*, ", ""],
+  ["\\s*\\([^)]*\\)", ""],
+  ["(^|, )[^,]* parish, ", "\\1"],
+  [", Thuringia, Germany$", ", Thüringen, Germany"],
+  [", Mecklenburg-Schwerin, Germany$", ", Mecklenburg-Vorpommern, Germany"],
+  [", Hessen-Darmstadt$", ", Hessen, Germany"],
+  [", Hessen$", ", Hessen, Germany"],
+  [", Pfalz, Bayern, Germany$", ", Rheinland-Pfalz, Germany"],
+  [", Pfalz$", ", Rheinland-Pfalz, Germany"],
+  [", Baden(, Germany)?$", ", Baden-Württemberg, Germany"],
+  [", Normandie, France$", ", France"],
+  [", Picardie, France$", ", France"],
+  [", Heiliges Römisches Reich$", ", Germany"],
+  [", Prussia$", ""]
+ ],
+ "deploy": {
+  "ssh_host": null,
+  "remote_dir": "family",
+  "url": null,
+  "env_file": "/etc/family.env"
+ }
+}

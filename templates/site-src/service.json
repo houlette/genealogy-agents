@@ -1,0 +1,4 @@
+{
+ "_note": "Military service routes for the website's Military service page. Each entry: person (ID without @; must not be living), war, branch, unit, summary, dossier (the file in sources/ that argues it), optional center [lat, lon, zoom], and stops, each with y, date, lat, lon, place, text, src, and sure: record (the person's own record puts them there), unit (a record shows the unit there, not the person), index, secondary, lead, or guess (no record). Coordinates are approximate.",
+ "service": []
+}

@@ -1,0 +1,31 @@
+# A site file for a shared Caddy server (for example ~/infra/conf.d/family.caddy).
+# Replace family.example.com, and bind-mount the built site into the caddy container:
+#   - /home/USER/family/site:/srv/family:ro
+family.example.com {
+    encode zstd gzip
+    header {
+        X-Robots-Tag "noindex, nofollow"
+        Referrer-Policy "same-origin"
+        X-Content-Type-Options "nosniff"
+    }
+
+    # Sign-in, requests, review, admin and per-reader data: the app itself.
+    @app path /signin /request /auth/* /review/* /admin /admin/* /api/* /pimg/*
+    handle @app {
+        reverse_proxy family-api:8000
+    }
+
+    # The page and the data change with every deploy; make browsers check for a new copy each time.
+    # app.js and style.css carry a version stamp in index.html, so they may be cached.
+    @fresh path / /index.html /data/*
+    header @fresh Cache-Control "no-cache"
+
+    # Everything else is the static site, served only to signed-in readers.
+    handle {
+        forward_auth family-api:8000 {
+            uri /auth/check
+        }
+        root * /srv/family
+        file_server
+    }
+}

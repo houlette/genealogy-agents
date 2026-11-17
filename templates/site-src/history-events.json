@@ -1,0 +1,4 @@
+{
+ "_note": "Historical events for the website's timeline and person pages. Each event: y (year, decimals allowed), optional y2 (end year), regions (codes from 'regions' in site-src/site.json, or 'world' for everyone), title, text, sources (URLs), checked (who checked the text against the sources, and when). Optional: near (a pattern; the event shows only for people recorded at a matching place at the time), people (IDs without @ of people it may have touched) with grade ('coincides', 'likely touched' or 'context'). Write only what a source says, and never claim an event caused an ancestor's death or move unless a record says so.",
+ "events": []
+}

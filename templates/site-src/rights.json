@@ -1,0 +1,16 @@
+{
+  "_note": "Which record images the website may show. A citation's images are shown only if the citation matches a 'show' pattern and no 'never' pattern (case-insensitive regular expressions). Read each repository's terms before adding it to 'show'; see site-src/README.md, 'Image rights'. Until then the site shows the transcription and citation without the image.",
+  "show": [
+    "\\bNARA\\b",
+    "National Archives",
+    "\\bUS census\\b",
+    "draft card",
+    "Matricula"
+  ],
+  "never": [
+    "Find a Grave",
+    "obituary",
+    "newspaper",
+    "online tree"
+  ]
+}

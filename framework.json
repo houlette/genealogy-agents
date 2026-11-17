@@ -17,7 +17,16 @@
     ".claude/agents/*.md",
     ".claude/hooks/*.py",
     "tests/*.py",
-    "tests/fixtures/*"
+    "tests/fixtures/*",
+    "site-src/index.html",
+    "site-src/app.js",
+    "site-src/style.css",
+    "site-src/README.md",
+    "family-app/app.py",
+    "family-app/Dockerfile",
+    "family-app/requirements.txt",
+    "family-app/deploy.sh",
+    "family-app/DEPLOYING.md"
   ],
   "seeds": {
     "templates/PROJECT.md": "PROJECT.md",
@@ -38,6 +47,16 @@
     "templates/gitignore": ".gitignore",
     "templates/.claude/settings.json": ".claude/settings.json",
     "tools/browser_bridge/site-notes.md": "tools/browser_bridge/site-notes.md",
-    "templates/tools/bakeoff/entries.json": "tools/bakeoff/entries.json"
+    "templates/tools/bakeoff/entries.json": "tools/bakeoff/entries.json",
+    "templates/site-src/site.json": "site-src/site.json",
+    "templates/site-src/rights.json": "site-src/rights.json",
+    "templates/site-src/history-events.json": "site-src/history-events.json",
+    "templates/site-src/service.json": "site-src/service.json",
+    "templates/site-src/places-overrides.json": "site-src/places-overrides.json",
+    "templates/family-app/docker-compose.yml": "family-app/docker-compose.yml",
+    "templates/family-app/family.env.example": "family-app/family.env.example",
+    "templates/family-app/family.caddy": "family-app/family.caddy",
+    "templates/family-app/aws/README.md": "family-app/aws/README.md",
+    "templates/family-app/aws/ses-send-policy.json": "family-app/aws/ses-send-policy.json"
   }
 }

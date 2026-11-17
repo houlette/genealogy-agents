@@ -10,3 +10,6 @@ tools/browser_bridge/claims*.json.tmp
 usage-ledger.jsonl
 scratch/
 tree-view.html
+site/
+private/
+family-app/data/

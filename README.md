@@ -10,12 +10,13 @@ The agents work in a git repository that holds the tree as a GEDCOM file, the sa
 - Tree tools: `tools/check_tree.py` (broken or one-sided links, people not connected to the root person, impossible ages, cited files that do not exist, and evidence grades that do not match their citations), `tools/person.py` (one person and their family, with line numbers, without reading the whole file), `tools/frontier.py` (direct ancestors whose parents are not yet found, with warning flags), `tools/living.py` (who may be living), `make-tree-view.py` (a self-contained interactive pedigree viewer), and `tools/verify.py` (all checks in one step).
 - Prose and commit checks: `tools/lint_prose.py` flags certainty words ("proves", "verified", "exhaustive") that the evidence rules reserve for original records, and em dashes; `tools/hooks/` runs the checks before each commit and blocks only on structural errors.
 - Model tools: `tools/llm.py` (one-shot calls to Anthropic, Gemini and OpenRouter models, with a usage ledger and costs from `tools/models.json`), `tools/transcribe.py` (blind-then-informed readings of a record crop by two or more models, with the differences shown), `tools/dispatch.py` (sends a task brief to a worker agent: Claude Code, Antigravity, OpenCode or a small built-in agent loop, with spending caps), `tools/usage.py`, and `tools/bakeoff.py` (scores models on reading your own records before you decide which to trust).
+- A private family website (`tools/build_site.py`, `site-src/`, `family-app/`): person pages with plain-language evidence labels, charts, a map and timeline of each family line with historical events, story chapters, a records gallery, and contributions from relatives, behind an email sign-in that shows each reader only the living relatives of their own family. `site-src/README.md` describes it and `family-app/DEPLOYING.md` how to run it on a server.
 - `.claude/agents/`: two Claude Code subagents, `retriever` (fetches one document through the bridge, on a cheap model) and `reader` (reads saved images and argues a link, with no browser).
 - `templates/`: the project files a new project starts with.
 
 ## Starting a project
 
-You need Python 3.10 or later, git, and Pillow (`pip install Pillow`) for image checks and crops. The browser bridge also needs Node.js and a recent Chrome; the model tools need API keys only if you use them.
+You need Python 3.10 or later, git, and Pillow (`pip install Pillow`) for image checks and crops. The browser bridge also needs Node.js and a recent Chrome; the model tools need API keys only if you use them; the website needs `pip install markdown`, and its sign-in app the packages in `family-app/requirements.txt` and a server with Docker.
 
 ```bash
 git clone https://github.com/houlette/genealogy-agents.git
@@ -49,14 +50,14 @@ Sync replaces a file only if your project has not changed it since the last sync
 python3 tools/run_tests.py
 ```
 
-runs about 640 unit tests of every tool, the hooks, the sync and the bridge. They use a small fictional tree (`tests/fixtures/sample-tree.ged`), throwaway git repositories and mocked HTTP, so they need no network, browser, API key or money. `tools/browser_bridge/live_two_agents.py` is a separate live test of the bridge against a real Chrome.
+runs about 810 unit tests of every tool, the hooks, the sync, the bridge and the website (the builder, the geocoder, the sign-in app and the deploy script). They use a small fictional tree (`tests/fixtures/sample-tree.ged`), throwaway git repositories, mocked HTTP and stand-ins for rsync and ssh, so they need no network, browser, server, API key or money; the website tests skip themselves if `markdown`, Pillow or the sign-in app's packages are missing. `tools/browser_bridge/live_two_agents.py` is a separate live test of the bridge against a real Chrome.
 
 ## Things to know before you rely on it
 
 - It was built and tested on one project, on macOS, with Claude Code, Antigravity and API workers. Linux should work for everything except the bridge's keep-awake feature; Windows is untested.
 - The model names and prices in `tools/models.json` were current in November 2026. Check them, and run `python3 tools/llm.py --check` once your keys are set.
 - The bridge drives your real, signed-in Chrome. Keep the agents in their own Chrome profile, read `tools/browser_bridge/README.md` first, and respect each site's terms of use and rate limits; the rules tell agents to stop on sign-outs, rate limits and repeated failures, but you are responsible for what runs under your accounts.
-- `tree-view.html` and the tree itself hold living relatives' details. Keep the project repository private, and treat anything you publish separately.
+- `tree-view.html` and the tree itself hold living relatives' details. Keep the project repository private, and treat anything you publish separately. The website keeps living relatives out of its static files and behind a sign-in, but read `tools/living.py`'s list and the image-rights section of `site-src/README.md` before you invite anyone.
 - The rules ask agents to write in plain language with marked certainty. They make agents slower and more cautious than they would otherwise be, which is the point.
 
 ## License
