@@ -12,6 +12,7 @@ import os
 import shutil
 import tempfile
 import unittest
+import unittest.mock
 
 import support
 
@@ -141,6 +142,11 @@ class PlaceTests(unittest.TestCase):
         self.assertEqual(bs.place_phrase("Springfield, Ohio, USA"), "Springfield, Ohio")
 
     def test_regions_use_the_configured_patterns(self):
+        defaults = [(pat, code) for pat, code in bs.SITE_DEFAULTS["regions"]]
+        with unittest.mock.patch.object(bs, "REGION_WORDS", defaults):
+            self.check_default_regions()
+
+    def check_default_regions(self):
         self.assertEqual(bs.regions("Musterdorf, Prussia"), ["de"])
         self.assertEqual(bs.regions("Springfield, Ohio, USA"), ["us"])
         self.assertEqual(bs.regions("Nowhere"), [])

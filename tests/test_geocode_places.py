@@ -12,6 +12,8 @@ import support
 import geocode_places as gp
 
 
+# Inside a project the module loads the project's own list from site-src/site.json; test the defaults.
+@mock.patch.object(gp, "REWRITE", gp.DEFAULT_REWRITE)
 class RewriteTests(unittest.TestCase):
     def test_street_address_is_dropped(self):
         self.assertEqual(gp.rewrite("12 Main Street, Springfield, Ohio, USA"), "Springfield, Ohio, USA")
@@ -43,7 +45,10 @@ class RewriteTests(unittest.TestCase):
             self.assertEqual(gp.load_rewrites(path), gp.DEFAULT_REWRITE)
 
     def test_template_list_keeps_the_address_rule_first(self):
-        with open(os.path.join(support.FRAMEWORK, "templates", "site-src", "site.json"), encoding="utf-8") as f:
+        template = os.path.join(support.FRAMEWORK, "templates", "site-src", "site.json")
+        if not os.path.exists(template):
+            self.skipTest("runs only in the framework repository, not in a synced project")
+        with open(template, encoding="utf-8") as f:
             rules = json.load(f)["geocode_rewrites"]
         self.assertEqual(rules[0][0], gp.DEFAULT_REWRITE[0][0])
         self.assertEqual([tuple(r) for r in rules], gp.DEFAULT_REWRITE)
@@ -53,6 +58,7 @@ def osm(rank, lat="39.92", lon="-83.81", name="Springfield, Ohio, United States"
     return {"lat": lat, "lon": lon, "place_rank": rank, "display_name": name}
 
 
+@mock.patch.object(gp, "REWRITE", gp.DEFAULT_REWRITE)
 class GeocodeTests(unittest.TestCase):
     def fake(self, answers):
         self.sent = []
