@@ -195,5 +195,54 @@ class Hooks(Repo):
         self.assertNotIn("(note) commit message", r.stdout + r.stderr)
 
 
+class LintProseNewProject(unittest.TestCase):
+    """A project just made by framework_sync init: no commits yet, framework text untouched."""
+
+    def setUp(self):
+        import framework_sync
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.p = os.path.join(self.tmpdir.name, "proj")
+        with open(os.devnull, "w") as devnull:
+            import contextlib
+            with contextlib.redirect_stdout(devnull):
+                framework_sync.main(["init", self.p, "--framework", support.FRAMEWORK])
+        support.git_init(self.p)
+
+    def tearDown(self):
+        self.tmpdir.cleanup()
+
+    def lint(self, *args):
+        return subprocess.run([sys.executable, "tools/lint_prose.py", *args], cwd=self.p,
+                              env=support.env_for(self.p), capture_output=True, text=True)
+
+    def test_no_commits_and_untouched_framework_text_pass(self):
+        r = self.lint()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("lint_prose: 0 flagged", r.stdout)
+
+    def test_project_prose_is_still_checked_before_the_first_commit(self):
+        write(os.path.join(self.p, "PROJECT.md"), "This proves it.\n")
+        r = self.lint()
+        self.assertIn("PROJECT.md:1: certainty word 'proves'", r.stdout)
+
+    def test_edited_framework_file_is_checked(self):
+        with open(os.path.join(self.p, "rules-browser.md"), "a", encoding="utf-8") as f:
+            f.write("A verified rule.\n")
+        r = self.lint()
+        self.assertIn("rules-browser.md", r.stdout)
+        self.assertIn("certainty word 'verified'", r.stdout)
+
+    def test_staged_check_in_a_repository_without_commits(self):
+        support.git(self.p, "add", "-A")
+        r = self.lint("--rev", "--cached")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_verify_passes_on_a_fresh_project(self):
+        r = subprocess.run([sys.executable, "tools/verify.py"], cwd=self.p, env=support.env_for(self.p),
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("verify: all checks passed cleanly.", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
