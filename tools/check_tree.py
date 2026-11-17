@@ -128,8 +128,7 @@ def source_check(records, path):
             notes = " ".join(v for _, t, v in sub if t in ("NOTE", "CONT", "CONC"))
             if "Evidence: source not recorded" in notes:
                 not_recorded.append(label)
-            elif not any(t == "SOUR" for _, t, _ in sub) and f"Source: {cfg.OWNER}" not in notes \
-                    and "Evidence: family knowledge" not in notes:
+            elif not any(t == "SOUR" for _, t, _ in sub) and f"Source: {cfg.OWNER}" not in notes:
                 no_sour.append(label)
             if "Evidence:" not in notes:
                 no_evid.append(label)
