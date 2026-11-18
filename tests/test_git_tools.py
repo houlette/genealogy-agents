@@ -136,6 +136,19 @@ class Verify(Repo):
         self.assertIn("Dated facts without a citation:", r.stdout)
         self.assertIn("notes.md:2: certainty word 'Proven'", r.stdout)
 
+    def test_broken_tasks_table_fails(self):
+        # A blank line cuts the second row off from its table, so Markdown would not show it.
+        write(os.path.join(self.p, "tasks.md"),
+              "| Task | Where | Suits | Status |\n|---|---|---|---|\n| One | FS | Haiku | open |\n\n"
+              "| Two | FS | Haiku | open |\n")
+        r = self.run_verify()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("ERROR line 5: table row with no header above it", r.stdout)
+        self.assertIn("[FAIL] check_tasks.py found broken tables in tasks.md.", r.stdout)
+
+
+TASKS_OK = "| Task | Where | Suits | Status |\n|---|---|---|---|\n| One | FS | Haiku | open |\n"
+
 
 class Hooks(Repo):
     def test_clean_commit_passes(self):
@@ -193,6 +206,29 @@ class Hooks(Repo):
         support.git(self.p, "add", "notes.md")
         r = self.commit("Add a note\n\nCo-Authored-By: Verified Bot <bot@example.invalid>")
         self.assertNotIn("(note) commit message", r.stdout + r.stderr)
+
+    def test_broken_tasks_table_is_noted_and_does_not_block(self):
+        write(os.path.join(self.p, "tasks.md"), TASKS_OK + "| Two | FS | open |\n")  # one cell short
+        support.git(self.p, "add", "tasks.md")
+        r = self.commit()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("(note) tasks.md: ERROR line 4: 3 cells, but the table's header has 4", r.stdout)
+
+    def test_research_log_without_tasks_gets_a_reminder(self):
+        write(os.path.join(self.p, "research-log.md"), "- 2026-11-18 (Claude) A search.\n")
+        support.git(self.p, "add", "research-log.md")
+        r = self.commit()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("(note) research-log.md changed but tasks.md did not", r.stdout)
+
+    def test_research_log_with_a_clean_tasks_update_gets_no_note(self):
+        write(os.path.join(self.p, "research-log.md"), "- 2026-11-18 (Claude) A search.\n")
+        write(os.path.join(self.p, "tasks.md"), TASKS_OK)
+        support.git(self.p, "add", "research-log.md", "tasks.md")
+        r = self.commit()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertNotIn("research-log.md changed but tasks.md did not", r.stdout)
+        self.assertNotIn("(note) tasks.md:", r.stdout)
 
 
 @unittest.skipUnless(os.path.exists(os.path.join(support.FRAMEWORK, "framework.json")),
