@@ -41,6 +41,7 @@ none of the six kind-of-source labels of AGENTS.md citation rule 3.
 The last line prints the next free @I@ and @F@ numbers for new records.
 """
 import collections
+import functools
 import os
 import re
 import sys
@@ -57,6 +58,18 @@ KIND_LABELS = ("with image", "with images", "image not saved", "index only", "co
 EXACT_DATE = re.compile(r"^\d{1,2} [A-Z]{3} \d{3,4}$")
 
 
+@functools.lru_cache(maxsize=None)
+def archived_images(base):
+    """Paths listed in sources-manifest.tsv (tools/sources_archive.py): images kept
+    in the S3 archive rather than in git, which count as saved even when a fresh
+    clone has not pulled them."""
+    path = os.path.join(base, "sources-manifest.tsv")
+    if not os.path.exists(path):
+        return set()
+    with open(path, encoding="utf-8") as f:
+        return {l.split("\t")[0] for l in f if l.strip() and not l.startswith("#")}
+
+
 def evidence_check(rid, tag, sub, lineno, base):
     """Return EVIDENCE warnings for one fact: its Evidence: notes against its citations."""
     out = []
@@ -71,7 +84,8 @@ def evidence_check(rid, tag, sub, lineno, base):
     if grade.startswith("Evidence: direct, original"):
         files = [f for s in sours for f in re.findall(r"sources/[^\s;,)`]+", s)]
         if not any(f.rstrip(".").lower().endswith(IMAGE_EXT + (".pdf",))
-                   and os.path.exists(os.path.join(base, f.rstrip("."))) for f in files):
+                   and (os.path.exists(os.path.join(base, f.rstrip(".")))
+                        or f.rstrip(".") in archived_images(base)) for f in files):
             out.append(f"{where}: 'direct, original' but no saved image is cited; regrade or save the image")
     if grade.startswith("Evidence: direct") and sours and all(
             ("index only" in s or "lead only" in s) and "with image" not in s for s in sours):
@@ -98,6 +112,7 @@ def source_check(records, path):
     errors, no_sour, no_evid, not_recorded, small = [], [], [], [], {}
     evidence, unlabelled = [], 0
     sizes = {}
+    archived = archived_images(base)
     for rid, rec in records.items():
         if rec["type"] not in ("INDI", "FAM"):
             continue
@@ -106,7 +121,8 @@ def source_check(records, path):
             for f in re.findall(r"sources/[^\s;,)`]+", value):
                 full = os.path.join(base, f.rstrip("."))
                 if not os.path.exists(full):
-                    errors.append(f"{rid} cites {f}, which does not exist")
+                    if f.rstrip(".") not in archived:
+                        errors.append(f"{rid} cites {f}, which does not exist")
                 elif Image and full.lower().endswith(IMAGE_EXT):
                     if full not in sizes:
                         try:

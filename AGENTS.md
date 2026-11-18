@@ -14,6 +14,7 @@ Whatever the end product, aim for a narrative family history with as much histor
 - `tools/check_tasks.py`: checks `tasks.md`: rows that do not display because a blank line or a wrong number of cells breaks the table, "in progress" claims more than three days old, and a person named in more than one open row.
 - `tools/lint_prose.py`: flags certainty words ("proves", "verified", "resolved", "exhaustive" and others), em dashes, and negative results marked "done" in the lines you added.
 - `tools/frontier.py`: the root person's direct ancestors whose parents are not yet in the tree, with warning flags; the reserve list for new tasks.
+- `tools/sources_archive.py`: for a project that keeps its record images in an S3 bucket instead of git (`archive` in `project.json`): `manifest` lists every image in `sources-manifest.tsv` (path, size, SHA-256), `push` uploads new images without deleting anything, `verify` compares the bucket with the manifest, and `pull` restores the images to a fresh clone.
 - `tools/living.py`: people who may be living, who must not appear in anything published.
 - `sources-index.md`: the repositories and record sets already used or identified (film, DGS and archive viewer numbers, years seen, the line each serves) and leads not yet opened. Check it before searching a catalog, and add a row when you open a new record set.
 - `familysearch-lookup-requests.md`: look-up requests for restricted FamilySearch films or unreadable entries, drafted for the owner to send to volunteers.
@@ -124,7 +125,7 @@ Never mark a line `Archival Extinction` without the owner's approval. The standa
 
 ## Sources and images
 
-- **Save every image** of an original record you use into `sources/`, unless `PROJECT.md` says otherwise. For an index-only record, save the index text and permanent link, and say that no image exists.
+- **Save every image** of an original record you use into `sources/`, unless `PROJECT.md` says otherwise. Where the project has an image archive, the images stay out of git: after saving new ones, run `python3 tools/sources_archive.py manifest` and `push`, and commit `sources-manifest.tsv` with the sidecar notes. For an index-only record, save the index text and permanent link, and say that no image exists.
 - **Save images at full resolution**, plus a tight crop of the entry for reading (`python3 tools/crop_image.py <src> <dst> --box LEFT TOP RIGHT BOTTOM` or `--rel L T R B`); a thumbnail of a whole page is not a usable image.
 - **Name files by date, event, place and person**, for example `1717-04-burials-Musterdorf-Johann-and-Maria-Schmidt.jpg`, with a note of the same name in `.md`. Session dossiers take the date first: `2026-11-01-schmidt-1651-close-reading.md`.
 - **Check the image before naming it**: confirm that it shows the target person.

@@ -21,6 +21,7 @@ import re
 import subprocess
 import sys
 
+IMAGE_EXT = (".jpg", ".jpeg", ".png", ".gif", ".tif", ".tiff", ".webp", ".pdf", ".heic", ".bmp")
 ROOT = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True).stdout.strip()
 os.chdir(ROOT)
 
@@ -55,9 +56,21 @@ if "tree.ged" in staged:
     # Cited files that would not be in the commit.
     cited = set(re.findall(r"sources/[^\s;,)`]+", git("show", ":tree.ged")))
     tracked = set(git("ls-files", "sources").split()) | {s for s in staged if s.startswith("sources/")}
-    missing = sorted(f.rstrip(".") for f in cited if f.rstrip(".") not in tracked and os.path.exists(f.rstrip(".")))
+    # With an image archive (tools/sources_archive.py), images are not committed;
+    # a cited image must be listed in the staged manifest instead.
+    archived = set()
+    if os.path.exists("sources-manifest.tsv"):
+        archived = {l.split("\t")[0] for l in git("show", ":sources-manifest.tsv").splitlines()
+                    if l and not l.startswith("#")}
+    missing = sorted(f.rstrip(".") for f in cited
+                     if f.rstrip(".") not in tracked and os.path.exists(f.rstrip(".")))
     for f in missing:
-        print(f"(note) tree.ged cites {f}, which is not committed or staged; git add it")
+        if archived and f.lower().endswith(IMAGE_EXT):
+            if f not in archived:
+                print(f"(note) tree.ged cites {f}, which is not in sources-manifest.tsv; "
+                      f"run python3 tools/sources_archive.py manifest and stage the manifest")
+        else:
+            print(f"(note) tree.ged cites {f}, which is not committed or staged; git add it")
 
 lint = subprocess.run([sys.executable, "tools/lint_prose.py", "--rev", "--cached"], capture_output=True, text=True)
 hits = [l for l in lint.stdout.splitlines() if not l.startswith("lint_prose:")]

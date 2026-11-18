@@ -123,6 +123,16 @@ class StructuralErrors(unittest.TestCase):
         r = self.check(support.fixture_text())  # no image saved
         self.assertIn(f"ERROR @I5@ cites {support.ERNST_IMAGE}, which does not exist", r.stdout)
 
+    def test_archived_image_is_not_an_error(self):
+        """An image listed in sources-manifest.tsv (kept in the S3 archive) counts as saved."""
+        with tempfile.TemporaryDirectory() as tmp:
+            support.make_project(tmp, images=())
+            with open(os.path.join(tmp, "sources-manifest.tsv"), "w", encoding="utf-8") as f:
+                f.write("# path\tbytes\tsha256\n" + support.ERNST_IMAGE + "\t100\t" + "0" * 64 + "\n")
+            r = support.run(tmp, "tools/check_tree.py")
+        self.assertNotIn("does not exist", r.stdout)
+        self.assertNotIn("@I5@ BIRT: 'direct, original' but no saved image", r.stdout)
+
     def test_trailing_full_stop_after_path(self):
         tree = support.fixture_text().replace("Ernst-Adler.jpg)", "Ernst-Adler.jpg.)")
         with tempfile.TemporaryDirectory() as tmp:
