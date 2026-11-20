@@ -1069,14 +1069,16 @@ function showNumbers() {
     value: f.n / f.of * 100, text: `${f.n} of ${f.of.toLocaleString()}`, tip: `Generation ${f.g}: ${f.n} found of ${f.of.toLocaleString()} possible (${(f.n / f.of * 100).toFixed(f.n / f.of < .01 ? 2 : 0)}%)`}));
 
   // Origins by paper trail: each branch's share goes to the birth country of its earliest known ancestor.
+  // When that ancestor's birthplace is not recorded, the branch goes to the nearest descendant on it whose is.
   const share = {};
-  const walk = (k, w, depth) => {
+  const walk = (k, w, depth, near) => {
+    const own = birthCountry(k), c = own !== "--c-un" ? own : near;
     const ps = parentsOf(k);
-    if (!ps.length || depth > 40) { const c = birthCountry(k); share[c] = (share[c] || 0) + w; return; }
-    ps.forEach(x => walk(x, w / 2, depth + 1));
-    if (ps.length === 1) { const c = birthCountry(k); share[c] = (share[c] || 0) + w / 2; }
+    if (!ps.length || depth > 40) { share[c] = (share[c] || 0) + w; return; }
+    ps.forEach(x => walk(x, w / 2, depth + 1, c));
+    if (ps.length === 1) share[c] = (share[c] || 0) + w / 2;
   };
-  walk(root, 1, 0);
+  walk(root, 1, 0, "--c-un");
   const orig = COUNTRIES.map(([v, t]) => ({v, t, f: share[v] || 0})).filter(o => o.f > 0.0005);
   let ox = 0;
   const CW = Math.max(250, Math.min(640, $("#view").clientWidth - 78)), CW2 = Math.min(420, CW), OW = CW;
@@ -1149,7 +1151,7 @@ function showNumbers() {
     </div>
     ${sec("How far back we have got", "Ancestors found in each generation, out of the number every person has (2 parents, 4 grandparents, 8 great-grandparents and so on).", hbars(frontRows, {max: 100, labelW: 215, W: CW}),
       table(["Generation", "Found", "Possible"], front.map((f, i) => [frontRows[i].label, f.n, f.of])))}
-    ${sec("Where the family came from", `Each branch of the tree counted back to its earliest known ancestor and that person's country of birth, as shares of ${esc(ROOTNAME)}'s ancestry.${D.site?.origins_note ? " " + esc(D.site.origins_note) : ""}`, origBar +
+    ${sec("Where the family came from", `Each branch of the tree counted back to its earliest known ancestor and that person's country of birth (or, where it is not recorded, the birth country of the nearest descendant on the branch whose birthplace is), as shares of ${esc(ROOTNAME)}'s ancestry.${D.site?.origins_note ? " " + esc(D.site.origins_note) : ""}`, origBar +
       `<div class="legendrow">${orig.map(o => `<span><i style="background:var(${o.v})"></i>${o.t} ${(o.f * 100).toFixed(1)}%</span>`).join("")}</div>`,
       table(["Country", "Share"], orig.map(o => [o.t, (o.f * 100).toFixed(1) + "%"])))}
     <div class="cols2">
