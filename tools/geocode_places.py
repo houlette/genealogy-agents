@@ -113,8 +113,16 @@ def save(cache):
 
 def main():
     redo = "--redo" in sys.argv
+    texts = []
     with open(cfg.TREE, encoding="utf-8") as f:
-        places = sorted({m.group(1).strip() for m in re.finditer(r"(?m)^2 PLAC (.+)$", f.read())})
+        texts.append(f.read())
+    if os.path.exists(SITE_JSON):  # the joined_trees files of the website (tools/join_trees.py)
+        with open(SITE_JSON, encoding="utf-8") as f:
+            joined = json.load(f).get("joined_trees") or []
+        for entry in joined:
+            with open(os.path.join(cfg.PROJECT_DIR, entry["file"]), encoding="utf-8-sig") as f:
+                texts.append(f.read())
+    places = sorted({m.group(1).strip() for t in texts for m in re.finditer(r"(?m)^2 PLAC (.+)$", t)})
     cache = {}
     if os.path.exists(OUT):
         with open(OUT, encoding="utf-8") as f:
