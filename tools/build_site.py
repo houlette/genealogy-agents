@@ -55,6 +55,8 @@ SITE_DEFAULTS = {
     "history_footer": "",     # a line under the historical events, such as "not yet checked against sources"
     "origins_note": "",       # added to the explanation of the "Where the family came from" chart
     "request_example": "for example, \"Aunt Carol's daughter\"",
+    "root": None,             # the person whose ancestors the site follows, if not the project's root (a child, to show both parents' sides)
+    "joined_trees": [],       # other GEDCOM files shown on the site alongside tree.ged; see tools/join_trees.py
     # Region codes for matching historical events (site-src/history-events.json) to people.
     "regions": [
         ["France", "fr"], ["Germany|Deutschland|Prussia|Heiliges", "de"], ["Poland|Polska", "pl"],
@@ -449,14 +451,31 @@ def event_of(e, by, keep_notes):
     return out
 
 
+def use_joined_trees():
+    """Build from tree.ged plus the joined_trees files, written to a temporary file that is removed at exit."""
+    if not SITE_CONF["joined_trees"]:
+        return
+    import atexit
+    import tempfile
+    import join_trees
+    with open(cfg.TREE, encoding="utf-8") as f:
+        text = join_trees.join_all(f.read(), SITE_CONF["joined_trees"], cfg.PROJECT_DIR)
+    fd, path = tempfile.mkstemp(prefix="site-tree-", suffix=".ged")
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
+        f.write(text)
+    atexit.register(os.remove, path)
+    cfg.TREE = path
+
+
 def main():
     global RIGHTS
     os.chdir(cfg.PROJECT_DIR)
     RIGHTS = read_json(os.path.join(SRC, "rights.json"), {"show": [], "never": []})
-    root = cfg.ROOT.strip("@")
+    use_joined_trees()
+    root = (SITE_CONF["root"] or cfg.ROOT).strip("@")
     people, fams = livingmod.load()
     if root not in people:
-        raise SystemExit(f"build_site: root person {cfg.ROOT} is missing from the tree")
+        raise SystemExit(f"build_site: root person @{root}@ is missing from the tree")
     living, unknown, est = livingmod.possibly_living(people, fams)
     living = set(living) | set(unknown)
     sname = surnames()
