@@ -180,15 +180,26 @@ def client_ip(request):
 # ---------- email ----------
 
 def send_email(to, subject, text):
-    if EMAIL_BACKEND == "ses":
-        import boto3
-        boto3.client("sesv2", region_name=SES_REGION).send_email(
-            FromEmailAddress=MAIL_FROM, Destination={"ToAddresses": [to]},
-            ReplyToAddresses=[REPLY_TO] if REPLY_TO else [],
-            Content={"Simple": {"Subject": {"Data": subject}, "Body": {"Text": {"Data": text}}}})
-        log.info("email sent to %s: %s", to, subject)
-    else:
-        log.info("EMAIL (console backend)\nTo: %s\nSubject: %s\n\n%s\n", to, subject, text)
+    """Send one email; return True if it went, False if the backend refused it.
+
+    A refusal (for example SES in its sandbox, which sends only to verified
+    addresses) is logged, not raised, so the database change that came before
+    it still gets an answer page instead of "Internal server error".
+    """
+    try:
+        if EMAIL_BACKEND == "ses":
+            import boto3
+            boto3.client("sesv2", region_name=SES_REGION).send_email(
+                FromEmailAddress=MAIL_FROM, Destination={"ToAddresses": [to]},
+                ReplyToAddresses=[REPLY_TO] if REPLY_TO else [],
+                Content={"Simple": {"Subject": {"Data": subject}, "Body": {"Text": {"Data": text}}}})
+            log.info("email sent to %s: %s", to, subject)
+        else:
+            log.info("EMAIL (console backend)\nTo: %s\nSubject: %s\n\n%s\n", to, subject, text)
+        return True
+    except Exception:
+        log.exception("email to %s failed: %s", to, subject)
+        return False
 
 
 def new_link(email, minutes):
@@ -252,9 +263,11 @@ def signin(request: Request, email: str = Form(""), website: str = Form("")):
     with closing(db()) as con:
         r = con.execute("select status from readers where email = ?", (email,)).fetchone()
     if r and r["status"] == "approved":
-        send_email(email, f"Your sign-in link for {site_name()}",
-                   f"Here is your link to sign in to {site_name()}:\n\n{new_link(email, LINK_MINUTES)}\n\n"
-                   f"It works once and expires in {LINK_MINUTES} minutes. If you did not ask for it, ignore this email.")
+        if not send_email(email, f"Your sign-in link for {site_name()}",
+                          f"Here is your link to sign in to {site_name()}:\n\n{new_link(email, LINK_MINUTES)}\n\n"
+                          f"It works once and expires in {LINK_MINUTES} minutes. If you did not ask for it, ignore this email."):
+            return page("Email not sent", f"<h1>We could not send the email</h1><p>The site could not send a sign-in link to <b>{E(email)}</b> just now. "
+                        f"Please try again later, or ask {E(owner_name())} for a link.</p>")
         return page("Check your email", f"<h1>Check your email</h1><p>We sent a sign-in link to <b>{E(email)}</b>. It expires in {LINK_MINUTES} minutes.</p>"
                     "<p class=muted>Nothing there? Check your spam folder, or <a href='/signin'>try again</a>.</p>")
     return request_form(email)
@@ -588,6 +601,11 @@ def person_options(selected=""):
 
 
 def decide(email, name, decision, person):
+    """Record the decision; on approval, email the welcome link.
+
+    Returns the welcome link if that email could not be sent, so the admin page
+    can show it for the admin to pass on by hand; otherwise None.
+    """
     now = time.time()
     with closing(db()) as con:
         con.execute("insert into readers(email, name, person, status, created, decided) values(?,?,?,?,?,?) "
@@ -596,9 +614,19 @@ def decide(email, name, decision, person):
         con.execute("update requests set status = ? where email = ? and status = 'pending'", (decision, email))
         con.commit()
     if decision == "approved":
-        send_email(email, f"You're in: {site_name()}",
-                   f"Hello {name or ''},\n\n{owner_name()} has added you to {site_name()}. Use this link to sign in (it works once, for {WELCOME_LINK_DAYS} days):\n\n"
-                   f"{new_link(email, WELCOME_LINK_DAYS * 1440)}\n\nAfter that, go to {BASE_URL} and enter your email address to get a new link whenever you need one.")
+        link = new_link(email, WELCOME_LINK_DAYS * 1440)
+        if not send_email(email, f"You're in: {site_name()}",
+                          f"Hello {name or ''},\n\n{owner_name()} has added you to {site_name()}. Use this link to sign in (it works once, for {WELCOME_LINK_DAYS} days):\n\n"
+                          f"{link}\n\nAfter that, go to {BASE_URL} and enter your email address to get a new link whenever you need one."):
+            return link
+    return None
+
+
+def email_failed_page(email, link):
+    return page("Approved, email not sent", f"""<h1>Approved, but the email was not sent</h1>
+<p><b>{E(email)}</b> can now use the site, but the welcome email could not be sent (the app's log has the reason).
+Send them this sign-in link yourself. It works once, for {WELCOME_LINK_DAYS} days:</p>
+<p><input readonly value="{E(link)}" onclick="this.select()"></p><a href='/admin'>Admin page</a>""")
 
 
 @app.get("/review/{tok}")
@@ -625,7 +653,9 @@ def review_post(tok: str, request: Request, decision: str = Form(""), person: st
         q = con.execute("select * from requests where review_hash = ? and status = 'pending'", (h(tok),)).fetchone()
     if not q:
         return review(tok)
-    decide(q["email"], q["name"], decision, person)
+    unsent = decide(q["email"], q["name"], decision, person)
+    if unsent:
+        return email_failed_page(q["email"], unsent)
     return page("Done", f"<h1>{'Approved' if decision == 'approved' else 'Denied'}</h1><p>{E(q['email'])}</p><a href='/admin'>Admin page</a>")
 
 
@@ -681,7 +711,9 @@ def admin_decide(request: Request, email: str = Form(""), name: str = Form(""), 
         with closing(db()) as con:
             con.execute("delete from sessions where email = ?", (email,))
             con.commit()
-    decide(email, name.strip() or None, decision, person)
+    unsent = decide(email, name.strip() or None, decision, person)
+    if unsent:
+        return email_failed_page(email, unsent)
     return RedirectResponse("/admin", 303)
 
 
