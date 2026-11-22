@@ -1119,8 +1119,9 @@ function drawLives(first) {
   }
   if (LV.hist) d.hist.forEach((h, i) => {
     const x = X(h.y), w = h.y2 ? Math.max(3, X(h.y2) - x) : 3;
-    grid += `<rect class="hist" data-h="${i}" x="${x}" y="0" width="${w}" height="${HT}"></rect>`;
-    axis += `<rect class="hist" data-h="${i}" x="${x}" y="26" width="${w}" height="8"></rect>`;
+    const kind = h.y2 ? "hist rg" : "hist pt";  // a period is drawn fainter than a single year, so overlapping periods do not darken the chart
+    grid += `<rect class="${kind}" data-h="${i}" x="${x}" y="0" width="${w}" height="${HT}"></rect>`;
+    axis += `<rect class="${kind}" data-h="${i}" x="${x}" y="26" width="${w}" height="8"></rect>`;
   });
   lay.forEach(L => L.items.forEach(({k, v, x, x2, lane, next}) => {
     const top = L.y + PAD + lane * LANE, cyy = top + LANE / 2, c = colorFor(k), est = !!v.est;

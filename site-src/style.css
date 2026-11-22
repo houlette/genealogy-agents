@@ -228,7 +228,9 @@ details.notes > summary { font: 600 1.15rem var(--serif); }
 .lvlabels .band { fill: var(--surface); }
 .lvwrap .grid { stroke: var(--line); }
 .lvwrap .hist { fill: var(--history); opacity: .2; }
+.lvwrap .hist.rg { opacity: .05; }
 .lvaxis .hist { opacity: .6; }
+.lvaxis .hist.rg { opacity: .3; }
 .lvlabels .bname { font: 600 15px var(--serif); fill: var(--ink); }
 .lvlabels .bsub { font: 12.5px var(--sans); fill: var(--muted); }
 .lv { cursor: pointer; }
