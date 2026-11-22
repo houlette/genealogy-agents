@@ -1,4 +1,4 @@
-The family website is a private site for relatives, built from the project's tree, stories and saved record images, and served behind an email sign-in so that living relatives' details reach only close family. It has a home page, a page for each person (story first, then a one-sentence summary, the life events with plain-language evidence labels, records and research notes), a fan chart and a family chart, a map and timeline that follow each surname line across the generations with historical events beside it, story chapters that move along a map, a military service map, a records gallery with a zoomable viewer, a page of numbers about the family, a "How are we related?" view, and a form on every person page through which relatives send a memory or a photo to the owner. It was built for one family in November 2026 and reworked after a review for readers who are not researchers; this folder and `family-app/` are the general version.
+The family website is a private site for relatives, built from the project's tree, stories and saved record images, and served behind an email sign-in so that living relatives' details reach only close family. It has a home page, a page for each person (story first, then a one-sentence summary, the life events with plain-language evidence labels, records and research notes), a fan chart that reaches every generation in the tree and can be centred on any ancestor, a family chart, a timeline of the ancestors' lives by family line, a map and timeline that follow each surname line across the generations with historical events beside it, story chapters that move along a map, a military service map, a records gallery with a zoomable viewer, a page of numbers about the family, a "How are we related?" view, and a form on every person page through which relatives send a memory or a photo to the owner. It was built for one family in November 2026 and reworked after a review for readers who are not researchers; this folder and `family-app/` are the general version.
 
 There are three parts:
 
@@ -74,6 +74,18 @@ A step with no place on the map.
 ```
 
 `place` must be a place that `site-src/places.json` puts on the map, written exactly as in `tree.ged`; the build reports a step whose place is missing. HTML comments become a collapsed "About the sources" note under the step, with their TODO sentences left out. The build stops if a step names a living person.
+
+## The family tree views
+
+The "Family tree" tab has three views of a person's ancestors, each with its own address, so a reader can bookmark or share it and the browser's Back button works:
+
+- `#/tree/<id>`: the fan chart, with that person in the centre. It draws every generation the tree has. Each person's slice is shared between their parents by how much is known above each (the number of ends of line, where a person with no known parents counts as one), so a branch with more known ancestors gets more of the circle and an unknown parent takes none; in the first four rings each known parent keeps at least a quarter of the slice. A person reached by two lines (pedigree collapse) is drawn in each place. Tapping a name shows the person beside the chart, with "Centre the fan here"; double-clicking a name does the same at once. The line of people from the reader to the centre is shown above the chart, each name a link back. Names shrink to an initial and surname, the surname, initials or nothing as the slices narrow, and the zoom buttons reach the rest; "All N generations" shows the whole chart.
+- `#/kin/<id>`: ancestors as couples, with each couple's other children.
+- `#/timeline/<id>`: each ancestor's life as a bar from birth to death year, in bands by father's line (a woman sits in her own father's band), with the earliest person of each band marked as where that line ends. A dot means only the birth year is known; a dashed or hollow shape is an estimated year (the build's estimate from a close relative, else a child's birth less 30 years). It scrolls sideways inside the chart, zooms with the buttons or a pinch, and can show the historical events of `history-events.json` as faint stripes.
+
+The views use only what the reader may see: living relatives are left out of the timeline, and an estimated year is worked out only from dates in the reader's own data.
+
+`tests/fixtures/deep-pedigree.ged` is an invented 27-generation tree (with one pedigree collapse) for trying these views at depth; `tests/fixtures/make_deep_pedigree.py` regenerates it.
 
 ## Living relatives
 

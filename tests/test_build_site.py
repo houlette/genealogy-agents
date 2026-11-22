@@ -608,6 +608,104 @@ class FrontEndTests(unittest.TestCase):
                            capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
 
+    def run_app(self, script):
+        """Run site-src/app.js in Node with small stand-ins for the browser, then script; return its JSON result."""
+        import subprocess
+        runner = (
+            "const vm = require('vm'), fs = require('fs');"
+            "const ctx = {console, document: {addEventListener() {}}, addEventListener() {},"
+            " getComputedStyle: () => ({getPropertyValue: () => ''})};"
+            "vm.createContext(ctx);"
+            "vm.runInContext(fs.readFileSync(process.argv[1], 'utf8'), ctx);"
+            "process.stdout.write(vm.runInContext(process.argv[2], ctx));")
+        r = subprocess.run(["node", "-e", runner, os.path.join(support.FRAMEWORK, "site-src", "app.js"), script],
+                           capture_output=True, text=True, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    @unittest.skipUnless(shutil.which("node"), "needs Node.js")
+    def test_timeline_bands_estimates_and_living(self):
+        # c's father f and grandfather ff form one band (ff has no birth year, so it is worked out from f's);
+        # c's mother m sits in her own father's band; a living stub (no name) is left out.
+        out = self.run_app("""
+          P = {c: {n: "Carl Berg", sn: "Berg", sx: "M", by: 1900, famc: ["F1"], fams: []},
+               f: {n: "Fritz Berg", sn: "Berg", sx: "M", by: 1870, dy: 1940, famc: ["F2"], fams: ["F1"]},
+               m: {n: "Mia Lang", sn: "Lang", sx: "F", famc: ["F3"], fams: ["F1"]},
+               ff: {n: "Franz Berg", sn: "Berg", sx: "M", dy: 1880, famc: [], fams: ["F2"]},
+               mf: {n: "Max Lang", sn: "Lang", sx: "M", by: 1835, famc: [], fams: ["F3"]},
+               mm: {lv: 1, sx: "F", famc: [], fams: ["F3"]}};
+          F = {F1: {h: "f", w: "m", c: ["c"]}, F2: {h: "ff", w: null, c: ["f"]}, F3: {h: "mf", w: "mm", c: ["m"]}};
+          H = [];
+          const d = livesData("c");
+          JSON.stringify({bands: d.bands.map(b => [b.sn, b.ks, b.first]), ff: d.yr.ff, m: d.yr.m, mm: "mm" in d.yr, y0: d.y0})""")
+        self.assertEqual(out["bands"], [["Berg", ["ff", "f", "c"], "ff"], ["Lang", ["mf", "m"], "mf"]])
+        self.assertEqual(out["ff"]["b"], 1840)
+        self.assertEqual(out["ff"]["d"], 1880)
+        self.assertTrue(out["ff"]["est"])
+        self.assertEqual(out["m"]["b"], 1870)
+        self.assertFalse(out["mm"])
+        self.assertEqual(out["y0"], 1830)
+
+    @unittest.skipUnless(shutil.which("node"), "needs Node.js")
+    def test_fan_labels_shorten_to_fit(self):
+        out = self.run_app("""JSON.stringify([
+          fanLabel("Anna Berg", "Anna", "Berg", 200, 60, 22, true),
+          fanLabel("Anna Maria Berg", "Anna", "Berg", 60, 20, 9.5, false),
+          fanLabel("Anna Berg", "Anna", "Berg", 3, 3, 9.5, false),
+          fanLabel("Anna Berg", "Anna", "Berg", 0.3, 0.2, 9.5, false)])""")
+        self.assertEqual(out[0]["lines"], ["Anna", "Berg"])
+        self.assertEqual(out[1]["lines"], ["A. Berg"])
+        self.assertEqual(out[2]["lines"], ["AB"])
+        self.assertIsNone(out[3])
+
+
+@unittest.skipUnless(HAVE_DEPS, "needs the markdown and Pillow packages")
+class DeepPedigreeTests(unittest.TestCase):
+    """tests/fixtures/deep-pedigree.ged, the invented 27-generation tree for the fan chart and the timeline."""
+
+    FIXTURES = os.path.join(support.FRAMEWORK, "tests", "fixtures")
+
+    def test_fixture_matches_its_generator(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("make_deep", os.path.join(self.FIXTURES, "make_deep_pedigree.py"))
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        with tempfile.TemporaryDirectory() as tmp, unittest.mock.patch("builtins.print"):
+            gen.OUT = os.path.join(tmp, "deep.ged")
+            gen.main()
+            with open(gen.OUT, encoding="utf-8") as f:
+                fresh = f.read()
+        with open(os.path.join(self.FIXTURES, "deep-pedigree.ged"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), fresh, "run python3 tests/fixtures/make_deep_pedigree.py")
+
+    def test_build_keeps_every_generation_and_hides_the_living(self):
+        with open(os.path.join(self.FIXTURES, "deep-pedigree.ged"), encoding="utf-8") as f:
+            tree = f.read()
+        with tempfile.TemporaryDirectory() as tmp:
+            site_project(tmp, tree=tree, rights=None)
+            r = build(tmp)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            pub, _ = outputs(tmp)
+        people, fams = pub["people"], pub["fams"]
+        parents = lambda k: [x for f in people[k]["famc"] for x in (fams[f]["h"], fams[f]["w"]) if x]
+        depth, paths, queue = {pub["root"]: 0}, {pub["root"]: 1}, [pub["root"]]
+        while queue:   # breadth first: each person's generation, and the number of lines that reach them
+            k = queue.pop(0)
+            for p in parents(k):
+                if p not in depth:
+                    depth[p] = depth[k] + 1
+                    queue.append(p)
+        order = sorted(depth, key=depth.get)
+        for k in order:
+            for p in parents(k):
+                paths[p] = paths.get(p, 0) + paths[k]
+        self.assertEqual(max(depth.values()), 27)
+        self.assertTrue(any(n > 1 for n in paths.values()), "the pedigree collapse is missing")
+        living = [k for k, p in people.items() if p.get("lv")]
+        self.assertEqual(len(living), 3)
+        for k in living:
+            self.assertNotIn("n", people[k])
+
 
 if __name__ == "__main__":
     unittest.main()
