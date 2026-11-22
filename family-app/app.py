@@ -38,9 +38,10 @@ MAIL_FROM = os.environ.get("MAIL_FROM", "Family History <family@example.com>")
 REPLY_TO = os.environ.get("REPLY_TO", ADMIN_EMAIL)
 SES_REGION = os.environ.get("SES_REGION", "us-east-1")
 # EMAIL_BACKEND=smtp: any mail server or sending service with SMTP over TLS, for example Resend
-# (smtp.resend.com, port 465, user "resend", password the API key).
+# (smtp.resend.com, port 587 with STARTTLS, user "resend", password the API key). Port 465 uses TLS from the
+# start; some hosts, Hetzner among them, block it.
 SMTP_HOST = os.environ.get("SMTP_HOST", "")
-SMTP_PORT = int(os.environ.get("SMTP_PORT") or 465)
+SMTP_PORT = int(os.environ.get("SMTP_PORT") or 587)
 SMTP_USER = os.environ.get("SMTP_USER", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SECURE = BASE_URL.startswith("https://")
