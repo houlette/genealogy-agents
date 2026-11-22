@@ -177,8 +177,8 @@ details.notes > summary { font: 600 1.15rem var(--serif); }
 .fanwrap path:hover { filter: brightness(1.12); }
 .fanwrap text { font-family: var(--sans); pointer-events: none; fill: #fff; }
 .fanzoom { position: absolute; top: 12px; right: 12px; z-index: 5; display: flex; gap: 6px; }
-.fanzoom button { font-size: 1rem; font-weight: 600; min-width: var(--tap); min-height: var(--tap); padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); border-radius: 8px; box-shadow: var(--shadow); cursor: pointer; }
-.fanzoom button:hover { border-color: var(--accent); }
+.fanzoom button, .lvzoom button { font-size: 1rem; font-weight: 600; min-width: var(--tap); min-height: var(--tap); padding: 0 12px; color: var(--ink); background: var(--surface); border: 1px solid var(--muted); border-radius: 8px; box-shadow: var(--shadow); cursor: pointer; }
+.fanzoom button:hover, .lvzoom button:hover { border-color: var(--accent); }
 .fanwrap path.selo { fill: none; stroke: var(--ink); stroke-width: 3px; vector-effect: non-scaling-stroke; pointer-events: none; }
 /* The line from the reader to the fan's centre; long trails show the first and last steps until opened */
 .crumbs { flex-basis: 100%; font-size: .9rem; }
@@ -214,6 +214,34 @@ details.notes > summary { font: 600 1.15rem var(--serif); }
 .kin text.kid { fill: var(--ink); pointer-events: all; }
 .kin text.kid:hover { fill: var(--accent); text-decoration: underline; }
 .fanwrap text.rowlab { fill: var(--muted); font-family: var(--serif); }
+/* Timeline of ancestors: a scrolling chart with the years along the top and the family lines down the left, both kept in view */
+.lvwrap { grid-column: 1; grid-row: 2; position: relative; min-height: 0; }
+.lvscroll { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; touch-action: pan-x pan-y; background: var(--bg); }
+.lvgrid { display: grid; width: max-content; }
+.lvcorner { position: sticky; left: 0; top: 0; z-index: 3; display: flex; align-items: center; padding: 0 10px; background: var(--surface); border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); font-size: .8rem; color: var(--muted); }
+.lvaxis { position: sticky; top: 0; z-index: 2; display: block; background: var(--surface); border-bottom: 1px solid var(--line); }
+.lvaxis text { font: 13px var(--sans); fill: var(--muted); }
+.lvlabels { position: sticky; left: 0; z-index: 1; display: block; background: var(--surface); border-right: 1px solid var(--line); }
+.lvchart { display: block; }
+.lvwrap .band { fill: var(--bg); }
+.lvwrap .band.alt { fill: var(--hist-bg); }
+.lvlabels .band { fill: var(--surface); }
+.lvwrap .grid { stroke: var(--line); }
+.lvwrap .hist { fill: var(--history); opacity: .2; }
+.lvaxis .hist { opacity: .6; }
+.lvlabels .bname { font: 600 15px var(--serif); fill: var(--ink); }
+.lvlabels .bsub { font: 12.5px var(--sans); fill: var(--muted); }
+.lv { cursor: pointer; }
+.lv text { font: 13px var(--sans); dominant-baseline: middle; pointer-events: none; }
+.lv text.out { fill: var(--ink); }
+.lv .end { fill: var(--accent); }
+.lv .hit { fill: none; pointer-events: all; }
+.lv:hover rect, .lv:hover circle { filter: brightness(1.12); }
+.lv.sel rect:not(.hit):not(.end), .lv.sel circle { stroke: var(--ink); stroke-width: 2.5; stroke-dasharray: none; }
+.lvzoom { display: inline-flex; gap: 6px; }
+.lvhist { display: flex; align-items: center; gap: 6px; min-height: var(--tap); font-size: .95rem; cursor: pointer; }
+.lvhist input { width: 20px; height: 20px; accent-color: var(--accent); }
+.lvnone { padding: 20px; color: var(--muted); }
 .kin rect.sibs { fill: color-mix(in srgb, var(--bg) 70%, var(--surface)); stroke: var(--line); }
 .kin text.sibhead { fill: var(--muted); font-style: italic; }
 .kin text.kid.deep { fill: var(--muted); }
@@ -376,8 +404,9 @@ ol.svstops .src { font-size: .85rem; color: var(--muted); margin-top: 3px; }
   .mapbox { position: relative; height: 46vh; min-height: 300px; }
   .timeline { height: 250px; }
   .panel { border-left: 0; border-top: 1px solid var(--line); padding: 18px 16px 40px; }
-  .fanwrap { height: 68vh; min-height: 380px; }
+  .fanwrap, .lvwrap { height: 68vh; min-height: 380px; }
   .selcard:not([hidden]) { display: block; }
+  .treeswitch { flex-wrap: wrap; }
   .legend { display: none; }
   .yearbig { font-size: 2.2rem; bottom: 50px; }
   .story { display: flex; flex-direction: column-reverse; }

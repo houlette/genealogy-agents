@@ -65,7 +65,7 @@ async function boot() {
   } catch (e) { /* storage not available */ }
   addEventListener("hashchange", route);
   addEventListener("popstate", () => { if (!(history.state && history.state.lightbox)) hideLightbox(); });
-  addEventListener("resize", () => { clearTimeout(J.rz); J.rz = setTimeout(() => { if (current === "journey") drawTimeline(); lbFit(); }, 150); });
+  addEventListener("resize", () => { clearTimeout(J.rz); J.rz = setTimeout(() => { if (current === "journey") drawTimeline(); if (current === "lives") drawLives(); lbFit(); }, 150); });
   document.addEventListener("pointerdown", e => { if (!e.target.closest("svg")) tip(); });
   route();
 }
@@ -170,7 +170,7 @@ function closeMenu() { $("#top").classList.remove("open"); const mb = $("#menubt
 
 // ---------- routing ----------
 let current = null;
-const TAB_OF = {"": "home", stories: "stories", story: "stories", tree: "tree", kin: "tree", related: "tree", map: "map", line: "map", service: "service", records: "records", numbers: "numbers"};
+const TAB_OF = {"": "home", stories: "stories", story: "stories", tree: "tree", kin: "tree", timeline: "tree", related: "tree", map: "map", line: "map", service: "service", records: "records", numbers: "numbers"};
 function route() {
   hideLightbox(); closeMenu(); tip();
   const h = location.hash.replace(/^#\/?/, "").split("/");
@@ -187,6 +187,7 @@ function route() {
   if (h[0] === "story") { const st = (D.stories || []).find(x => x.slug === h[1]); return st ? showStory(st) : showStories(); }
   if (h[0] === "tree") return showTree(h[1] && P[h[1]] ? h[1] : ME.anchor);
   if (h[0] === "kin") return showKin(h[1] && P[h[1]] ? h[1] : null);
+  if (h[0] === "timeline") return showLives(h[1] && P[h[1]] ? h[1] : null);
   if (h[0] === "related") return showRelated(P[h[1]] ? h[1] : null, P[h[2]] ? h[2] : null);
   if (h[0] === "records") return showRecords();
   if (h[0] === "p" && P[h[1]]) return showPerson(h[1]);
@@ -830,6 +831,7 @@ function renderPanelLite(k) {
   if (!known(k)) {
     panel.innerHTML = `<h2>Your family tree</h2><p class="intro">${current === "kin"
       ? "Your ancestors run up the chart in couples. Under each person are their brothers and sisters, with any of their children the research has found. Choose how far back to go at the top; tap anyone for details."
+      : current === "lives" ? LIVES_HELP
       : "The chart shows every generation of ancestors the research has found; zoom out to see the outer rings. A branch where more is known gets more of the circle. Colours show where each person was born. Tap a name for details, and double-click it to put that person in the centre."}</p>${treeLegend}`;
     return;
   }
@@ -839,11 +841,12 @@ function renderPanelLite(k) {
     <p><a class="btn" href="#/p/${k}">Open ${first}'s page &rsaquo;</a></p>
     <p class="treebtns">${current !== "tree" ? `<a class="btn ghost" href="#/tree/${k}">${first}'s ancestors</a>` : k !== FAN.centre ? `<a class="btn ghost" href="#/tree/${k}">Centre the fan here</a>` : ""} <a class="btn ghost" href="#/kin/${k}">${first}'s family tree</a></p>
     <p class="hint">${current === "kin" ? `Each couple's children are shown beneath them: the one on the line and their brothers and sisters, with any children of theirs that the research has found. Relationships are to ${ME.self || ME.anchor !== D.root ? "you" : esc(ROOTNAME)}.`
+      : current === "lives" ? LIVES_HELP
       : k === FAN.centre ? `The chart shows ${first}'s ancestors, every generation the research has found. Zoom out to see the outer rings.` : `Choose "Centre the fan here", or double-click ${first}'s name in the chart, to see ${first}'s ancestors in the middle.`}</p>
     ${treeLegend}`;
 }
 const countryKey = () => COUNTRIES.map(([v, t]) => `<span><i style="background:var(${v})"></i>${t}</span>`).join("");
-const treeSwitch = (mode, k) => `<span class="treeswitch"><a href="#/tree/${k}" class="${mode === "fan" ? "on" : ""}">Fan of ancestors</a><a href="#/kin/${k}" class="${mode === "kin" ? "on" : ""}">Family tree with siblings</a></span>`;
+const treeSwitch = (mode, k) => `<span class="treeswitch"><a href="#/tree/${k}" class="${mode === "fan" ? "on" : ""}">Fan of ancestors</a><a href="#/kin/${k}" class="${mode === "kin" ? "on" : ""}">Family tree with siblings</a><a href="#/timeline/${k}" class="${mode === "lives" ? "on" : ""}">Timeline</a></span>`;
 
 // ---------- family tree with siblings: ancestors as couples, top down, with each couple's other children beside the line ----------
 const KIN = {depth: 3};
@@ -955,6 +958,192 @@ function drawKin(base) {
     start = {x: me.x + BW / 2 - w / 2, y: Math.max(full.y, full.y + full.h - h), w, h};
   }
   fanZoom(svg, wrap, full, start, N, `Show all ${Object.keys(pos).length + Object.values(list).reduce((a, l) => a + l.length, 0)} people`);
+}
+
+// ---------- ancestors on a timeline: each life a bar from birth to death, in bands by father's line ----------
+// A band is one father-to-son line: everyone whose father, father's father and so on lead to the same earliest man,
+// so a woman sits in her own father's band. The band's earliest known person is marked as where the line ends.
+// Years come only from what the reader may see; a missing birth year is estimated and drawn hollow.
+const LV = {base: null, ppy: 0, which: "all", hist: true, sel: null, data: null};
+const LIVES_HELP = "Each bar is one ancestor's life, from birth to death, in bands by family line: a father, his father and so on. The mark at the left of a band is the earliest person found on that line. A dot means only the birth year is known; a hollow or dashed shape means the year is estimated. Tap anyone for details.";
+function livesData(base) {
+  const gen = upMap(base), ks = Object.keys(gen).filter(known), yr = {};
+  // Years: the recorded birth; else the site's estimate from a close relative; else a child's birth less 30, a parent's
+  // plus 30, or the death less 60. Only years in the data this reader has are used, so nothing hidden is worked out.
+  ks.forEach(k => { const p = P[k]; yr[k] = p.by ? {b: p.by} : p.est ? {b: p.est, est: "from a close relative's dates"} : null; });
+  const near = [...ks].sort((a, b) => gen[a] - gen[b]);
+  const yearOf = x => yr[x] ? yr[x].b : known(x) && P[x].by ? P[x].by : null;
+  near.forEach(k => { if (yr[k]) return; const ys = childrenOf(k).map(yearOf).filter(Boolean); if (ys.length) yr[k] = {b: Math.min(...ys) - 30, est: "about 30 years before a child's birth"}; });
+  [...near].reverse().forEach(k => { if (yr[k]) return; const ys = parentsOf(k).map(yearOf).filter(Boolean); if (ys.length) yr[k] = {b: Math.max(...ys) + 30, est: "about 30 years after a parent's birth"}; });
+  ks.forEach(k => { if (!yr[k] && P[k].dy) yr[k] = {b: P[k].dy - 60, est: "from the year of death"}; });
+  ks.forEach(k => { const v = yr[k]; if (!v) return; v.d = P[k].dy || null; if (v.d && v.d < v.b) v.b = v.d; });
+  const drawn = ks.filter(k => yr[k]);
+  // Bands: the topmost known father of each person; ordered as the fan chart goes round, the reader's father's line first.
+  const fatherOf = k => { const f = parentsOf(k).find(x => P[x]?.sx === "M"); return f && known(f) ? f : null; };
+  const topOf = {};
+  const top = k => { if (topOf[k]) return topOf[k]; let x = k; const seen = new Set([x]); for (let f; (f = fatherOf(x)) && !seen.has(f);) { seen.add(f); x = f; } return (topOf[k] = x); };
+  const order = [], seen = new Set(), ordered = new Set();
+  const stack = [base];
+  while (stack.length) {   // depth first, father before mother, without recursion
+    const k = stack.pop();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    if (yr[k] && !ordered.has(top(k))) { ordered.add(top(k)); order.push(top(k)); }
+    const [fa, mo] = fanParents(k);
+    if (mo) stack.push(mo);
+    if (fa) stack.push(fa);
+  }
+  const byTop = {};
+  drawn.forEach(k => (byTop[top(k)] ||= []).push(k));
+  const bands = order.map(t => {
+    const ks2 = byTop[t].sort((a, b) => yr[a].b - yr[b].b || gen[b] - gen[a]);
+    return {top: t, sn: P[t].sn || P[t].n.split(" ").slice(-1)[0], ks: ks2, first: ks2[0]};
+  });
+  const ys = drawn.flatMap(k => [yr[k].b, yr[k].d || yr[k].b]);
+  const y0 = Math.floor((Math.min(...ys) - 5) / 10) * 10;
+  const y1 = Math.min(new Date().getFullYear() + 1, Math.max(...ys, known(base) && P[base].by ? P[base].by : 0) + 10);
+  // Historical events as on the map's timeline: those of a region where an ancestor lived, those naming an ancestor,
+  // and local ones ("near") only where an ancestor was recorded at a matching place within 30 years of them.
+  const regs = new Set(["world"]); drawn.forEach(k => (P[k].regions || []).forEach(r => regs.add(r)));
+  const hist = (H || []).filter(h => {
+    if (h.y > y1 || (h.y2 || h.y) < y0) return false;
+    if ((h.people || []).some(x => x in yr)) return true;
+    if (!h.near) return (h.regions || []).some(r => regs.has(r));
+    const re = new RegExp(h.near);
+    return drawn.some(k => (P[k].ev || []).some(e => e.pk && e.y && re.test(e.pk) && e.y >= h.y - 30 && e.y <= (h.y2 || h.y) + 30));
+  });
+  return {base, yr, bands, y0, y1, hist, missing: ks.length - drawn.length};
+}
+function showLives(base) {
+  current = "lives"; stop();
+  base = base || ME.anchor;
+  if (LV.base !== base) { LV.base = base; LV.ppy = 0; LV.sel = null; }
+  treeLegend = `<div class="fanlegend"><b>Colour: where each person was born</b>${countryKey()}
+    <span><i style="background:var(--muted)"></i>Birth to death</span><span><i style="background:var(--muted);border-radius:50%"></i>Only the birth year known</span>
+    <span><i style="border:1.5px dashed var(--ink);background:none"></i>Birth year estimated</span><span><i style="background:var(--accent);width:5px"></i>Earliest known on the line</span>
+    <span><i style="background:var(--history);opacity:.45;width:5px"></i>Historical event</span></div>`;
+  const who = base === ME.anchor ? (youName() === "You" ? "your" : esc(ROOTNAME) + "'s") : esc(firstName(base)) + "'s";
+  $("#view").innerHTML = `<div class="treeview"><div class="treebar">${treeSwitch("lives", base)}
+    <span class="lvzoom"><button type="button" data-lz="out" aria-label="Zoom out: more years at once">&minus;</button><button type="button" data-lz="in" aria-label="Zoom in">+</button><button type="button" data-lz="fit">Fit all the years</button></span>
+    <label class="kindepth">Show <select id="lvwhich"><option value="all">Every family line</option><option value="long"${LV.which === "long" ? " selected" : ""}>Lines of two or more people</option></select></label>
+    <label class="lvhist"><input type="checkbox" id="lvhist"${LV.hist ? " checked" : ""}> History</label>
+    <span class="hint">Each bar is one of ${who} ancestors. Tap a bar for details; scroll or drag sideways through the years.</span></div>
+    <div class="lvwrap" id="lvwrap"><div class="lvscroll" id="lvscroll" tabindex="0" aria-label="Ancestors by year of birth"></div><div class="selcard" id="selcard" hidden></div></div><aside class="panel" id="panel"></aside></div>`;
+  J.chain = []; J.map = null; J.line = null;
+  LV.data = livesData(base);
+  const box = $("#lvscroll");
+  $("#lvwhich").addEventListener("change", e => { LV.which = e.target.value; drawLives(); });
+  $("#lvhist").addEventListener("change", e => { LV.hist = e.target.checked; drawLives(); });
+  $(".lvzoom").addEventListener("click", e => { const z = e.target.closest("[data-lz]")?.dataset.lz; if (z) livesZoom(z === "in" ? 1.6 : z === "out" ? 1 / 1.6 : 0); });
+  // Pinch (two fingers on a phone, or a trackpad, which sends ctrl and the wheel) zooms the years; one finger scrolls.
+  box.addEventListener("wheel", ev => { if (!ev.ctrlKey) return; ev.preventDefault(); livesZoom(Math.exp(-ev.deltaY * 0.01), ev.clientX); }, {passive: false});
+  let pinch = null;
+  box.addEventListener("touchstart", ev => { if (ev.touches.length === 2) pinch = Math.abs(ev.touches[0].clientX - ev.touches[1].clientX) || 1; }, {passive: true});
+  box.addEventListener("touchmove", ev => {
+    if (ev.touches.length !== 2 || !pinch) return;
+    ev.preventDefault();
+    const d = Math.abs(ev.touches[0].clientX - ev.touches[1].clientX) || 1;
+    if (Math.abs(d / pinch - 1) > 0.08) { livesZoom(d / pinch, (ev.touches[0].clientX + ev.touches[1].clientX) / 2); pinch = d; }
+  }, {passive: false});
+  box.addEventListener("touchend", ev => { if (ev.touches.length < 2) pinch = null; });
+  box.addEventListener("click", ev => { const g = ev.target.closest("[data-k]"); if (!g) return; tip(); livesSelect(g.dataset.k); });
+  box.addEventListener("pointerover", ev => {
+    const g = ev.target.closest("[data-k],[data-h]"); if (!g) return;
+    if (g.dataset.h) { const h = LV.data.hist[+g.dataset.h]; return tip(ev, `<b>${esc(h.title)}</b> ${h.y}${h.y2 ? "–" + h.y2 : ""}${h.text ? "<br>" + esc(h.text) : ""}`); }
+    tip(ev, livesTip(g.dataset.k));
+  });
+  box.addEventListener("pointerout", ev => { if (ev.target.closest("[data-k],[data-h]")) tip(); });
+  box.addEventListener("scroll", () => tip(), {passive: true});
+  drawLives(true);
+  renderPanelLite(LV.sel || base);
+}
+function livesTip(k) {
+  const v = LV.data.yr[k], b = LV.data.bands.find(x => x.ks.includes(k)), rel = relLabel(k);
+  const yrs = v.est ? `born about ${v.b} (estimated ${v.est})${v.d ? `, died ${v.d}` : ""}` : yearsOf(k);
+  return `<b>${esc(P[k].n)}</b><br>${esc(yrs)}${rel ? "<br>" + esc(rel) : ""}${b && b.first === k ? `<br><i>The earliest person found on the ${esc(b.sn)} line</i>` : ""}`;
+}
+function livesSelect(k) {
+  LV.sel = k;
+  document.querySelectorAll("#lvscroll .lv").forEach(g => g.classList.toggle("sel", g.dataset.k === k));
+  renderPanelLite(k);
+  showSelCard(k);
+}
+// Zoom by a factor (0: fit every year on the screen), keeping the year under the pointer, or in the middle, where it is.
+function livesZoom(f, clientX) {
+  const box = $("#lvscroll"), d = LV.data; if (!box || !d) return;
+  const r = box.getBoundingClientRect(), LW = LV.LW, view = box.clientWidth - LW;
+  const px = clientX != null ? Math.max(0, Math.min(view, clientX - r.left - LW)) : view / 2;
+  const year = d.y0 + (box.scrollLeft + px - 12) / LV.ppy;
+  LV.ppy = f ? LV.ppy * f : -1;
+  drawLives();
+  box.scrollLeft = 12 + (year - d.y0) * LV.ppy - px;
+}
+function drawLives(first) {
+  const box = $("#lvscroll"), d = LV.data; if (!box || !d) return;
+  if (!d.bands.length) { box.innerHTML = `<p class="lvnone">No years are known yet for these ancestors.</p>`; return; }
+  const narrow = box.clientWidth < 600, LW = LV.LW = narrow ? 96 : 160, AX = 34, LANE = 24, PAD = 8;
+  const span = d.y1 - d.y0, fit = Math.max(0.05, (box.clientWidth - LW - 24) / span);
+  if (LV.ppy < 0) LV.ppy = fit;
+  if (!LV.ppy) LV.ppy = Math.max(fit, narrow ? 1.5 : 0);
+  LV.ppy = Math.max(fit, Math.min(30, LV.ppy));
+  const ppy = LV.ppy, W = Math.ceil(span * ppy) + 24, X = y => 12 + (y - d.y0) * ppy;
+  const bands = d.bands.filter(b => LV.which !== "long" || b.ks.length > 1);
+  let y = 0;
+  const lay = bands.map(b => {
+    // Each band packs its lives into as few rows as will not overlap.
+    const ends = [];
+    const items = b.ks.map(k => {
+      const v = d.yr[k], x = X(v.b), x2 = v.d ? Math.max(x + 6, X(v.d)) : x;
+      let lane = ends.findIndex(e => e < x - 4);
+      if (lane < 0) { lane = ends.length; ends.push(0); }
+      ends[lane] = v.d ? x2 : x + 7;
+      return {k, v, x, x2, lane};
+    });
+    items.forEach(it => { it.next = Math.min(Infinity, ...items.filter(o => o.lane === it.lane && o.x > it.x).map(o => o.x)); });
+    const h = Math.max(46, ends.length * LANE + 2 * PAD), out = {b, y, h, items};
+    y += h;
+    return out;
+  });
+  const HT = y, tw = s => s.length * 7.2;
+  const step = [5, 10, 20, 25, 50, 100, 200].find(s => s * ppy >= 70) || 200;
+  let grid = "", axis = "", labels = "", body = "";
+  lay.forEach((L, i) => {
+    grid += `<rect class="band${i % 2 ? " alt" : ""}" x="0" y="${L.y}" width="${W}" height="${L.h}"></rect>`;
+    const fy = d.yr[L.b.first];
+    labels += `<rect class="band${i % 2 ? " alt" : ""}" x="0" y="${L.y}" width="${LW}" height="${L.h}"></rect><text class="bname" x="10" y="${L.y + 21}">${esc(L.b.sn.length > (narrow ? 10 : 17) ? L.b.sn.slice(0, narrow ? 9 : 16) + "…" : L.b.sn)}</text>
+      <text class="bsub" x="10" y="${L.y + 38}">${narrow ? "" : `${L.b.ks.length} ${L.b.ks.length === 1 ? "person" : "people"}, `}from ${fy.est ? "c. " : ""}${fy.b}</text>`;
+  });
+  for (let t = Math.ceil(d.y0 / step) * step; t <= d.y1; t += step) {
+    grid += `<line class="grid" x1="${X(t)}" x2="${X(t)}" y1="0" y2="${HT}"></line>`;
+    if (X(t) > 18) axis += `<text x="${X(t)}" y="20" text-anchor="middle">${t}</text>`;
+  }
+  if (LV.hist) d.hist.forEach((h, i) => {
+    const x = X(h.y), w = h.y2 ? Math.max(3, X(h.y2) - x) : 3;
+    grid += `<rect class="hist" data-h="${i}" x="${x}" y="0" width="${w}" height="${HT}"></rect>`;
+    axis += `<rect class="hist" data-h="${i}" x="${x}" y="26" width="${w}" height="8"></rect>`;
+  });
+  lay.forEach(L => L.items.forEach(({k, v, x, x2, lane, next}) => {
+    const top = L.y + PAD + lane * LANE, cyy = top + LANE / 2, c = colorFor(k), est = !!v.est;
+    let g = `<g class="lv${LV.sel === k ? " sel" : ""}" data-k="${k}">`;
+    if (L.b.first === k) g += `<rect class="end" x="${x - 6}" y="${top + 1}" width="4" height="${LANE - 2}" rx="1"></rect>`;
+    g += v.d
+      ? `<rect x="${x}" y="${top + 3}" width="${x2 - x}" height="${LANE - 6}" rx="4" fill="${c}"${est ? ` fill-opacity=".25" stroke="${c}" stroke-width="1.5" stroke-dasharray="4 3"` : ""}></rect>`
+      : `<circle cx="${x}" cy="${cyy}" r="6" fill="${est ? css("--surface") : c}"${est ? ` stroke="${c}" stroke-width="2" stroke-dasharray="3 2"` : ""}></circle>`;
+    // The name inside the bar when it fits, else after it when there is room before the next life in the row.
+    const nm = P[k].n, fn = firstName(k), inside = v.d ? x2 - x - 10 : 0, after = next - (v.d ? x2 : x + 7) - 12;
+    const txt = [nm, fn].find(s => tw(s) <= inside);
+    if (txt) g += `<text x="${x + 5}" y="${cyy + 1}" style="fill:${est ? css("--ink") : inkOn(c)}">${esc(txt)}</text>`;
+    else { const t2 = [nm, fn].find(s => tw(s) <= after); if (t2) g += `<text class="out" x="${(v.d ? x2 : x + 7) + 5}" y="${cyy + 1}">${esc(t2)}</text>`; }
+    body += g + `<rect class="hit" x="${x - 7}" y="${top}" width="${Math.max(14, (v.d ? x2 - x : 0) + 14)}" height="${LANE}"></rect></g>`;
+  }));
+  const keepX = box.scrollLeft, keepY = box.scrollTop;
+  box.innerHTML = `<div class="lvgrid" style="grid-template-columns:${LW}px ${W}px">
+    <div class="lvcorner" style="height:${AX}px">${d.missing ? `<span title="${d.missing} ancestors have no year to place them by">${d.missing} not shown</span>` : ""}</div>
+    <svg class="lvaxis" width="${W}" height="${AX}" aria-hidden="true">${axis}</svg>
+    <svg class="lvlabels" width="${LW}" height="${HT}" aria-hidden="true">${labels}</svg>
+    <svg class="lvchart" width="${W}" height="${HT}" role="img" aria-label="Lives of ${lay.reduce((a, L) => a + L.items.length, 0)} ancestors, ${d.y0} to ${d.y1}">${grid}${body}</svg></div>`;
+  if (first) box.scrollLeft = box.scrollWidth;   // start at the recent end, nearest the reader
+  else { box.scrollLeft = keepX; box.scrollTop = keepY; }
 }
 
 // ---------- stories (stage 4): text scrolls, the map follows ----------
@@ -1423,6 +1612,7 @@ function showHome() {
       <ul class="onthisday">${day.hits.map(x => `<li><span class="yr">${x.y}</span><a href="#/p/${x.k}">${esc(x.text)}</a>, ${day.year - x.y} years ago${x.pl ? `<div class="where">${esc(x.pl)}</div>` : "."}</li>`).join("")}</ul></section>` : ""}
     <section><h2>More to explore</h2><div class="tilegrid">
       <a class="tile2" href="#/tree"><b>Family tree</b><span>Everyone you descend from, in one picture.</span></a>
+      <a class="tile2" href="#/timeline"><b>Timeline</b><span>Every ancestor's life, century by century, by family line.</span></a>
       <a class="tile2" href="#/map"><b>Map</b><span>Follow each family from Europe to America, year by year.</span></a>
       <a class="tile2" href="#/related"><b>How are we related?</b><span>Pick any two people and see the link between them.</span></a>
       <a class="tile2" href="#/service"><b>Military service</b><span>${(D.service || []).length} relatives' service, stop by stop on a map.</span></a>
