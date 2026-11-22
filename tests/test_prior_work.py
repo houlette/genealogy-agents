@@ -36,6 +36,8 @@ LOG = """# Research log
 
 - 2026-11-18 (Claude) Archion worker claude-sub-298: Musterdorf baptisms 1748-1756 (123456 Bild 159-183) read page by page; no Kaspar Weidel.
 - 2026-11-19 (Claude) Pfahl family of Musterkreis: the 1792 bond names Anna Pfahl.
+- 2026-11-20 (Claude) Files: the file was saved; file names checked; File line notes.
+- 2026-11-20 (Claude) Anna Fahl's 1795 bond is in the file of bonds.
 """
 
 DOSSIER = """Compiled by: claude-sub-49, 19 Nov 2026
@@ -113,6 +115,14 @@ class SearchTest(unittest.TestCase):
         r = run(self.tmp, "--person", "@I3@")
         self.assertIn("names searched: Fahl, Pfahl, Vahl", r.stdout)
         self.assertIn("the 1792 bond names Anna Pfahl", r.stdout)
+
+    def test_surname_that_is_a_word_needs_a_given_name(self):
+        with open(os.path.join(self.tmp, "research-log.md"), "a", encoding="utf-8") as f:
+            f.write("- Fahl notes; fahl fahl fahl fahl fahl fahl.\n")
+        r = run(self.tmp, "--surname", "Fahl", "--no-sound")
+        self.assertIn("also ordinary words", r.stdout)
+        self.assertIn("Anna Fahl's 1795 bond", r.stdout)
+        self.assertNotIn("Fahl notes", r.stdout)
 
     def test_place_widens_to_register_and_range(self):
         r = run(self.tmp, "--person", "@I2@", "--place", "Musterdorf")

@@ -75,9 +75,16 @@ def fold(text):
 
 def _fold(text):
     """Lower-case ASCII, umlauts written out as in file names (oe for ö), accents dropped."""
-    for a, b in (("ß", "ss"), ("ẞ", "ss"), ("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("Ä", "Ae"), ("Ö", "Oe"), ("Ü", "Ue")):
+    return fold_case(text).lower()
+
+
+def fold_case(text):
+    """ASCII with the case kept: umlauts written out as in file names (oe for ö), accents dropped."""
+    if text.isascii():
+        return text
+    for a, b in (("ß", "ss"), ("ẞ", "SS"), ("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("Ä", "Ae"), ("Ö", "Oe"), ("Ü", "Ue")):
         text = text.replace(a, b)
-    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c)).lower()
+    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
 
 
 @lru_cache(maxsize=None)
@@ -281,7 +288,8 @@ def load_corpus():
         try:
             with open(f, encoding="utf-8", errors="replace") as fh:
                 lines = fh.read().splitlines()
-            out.append((rel(f), lines, [_fold(l) if not l.isascii() else l.lower() for l in lines]))
+            cased = [fold_case(l) for l in lines]
+            out.append((rel(f), lines, cased, [c.lower() for c in cased]))
         except OSError:
             continue
     return out
@@ -358,7 +366,7 @@ def sound_alikes(names, corpus, image_list, limit=12):
     counts = Counter()
     known = {fold(n) for n in names}
     words = Counter()
-    for _, lines, _f in corpus:
+    for _, lines, _c, _f in corpus:
         for line in lines:
             words.update(WORD_RE.findall(line))
     for w, n in words.items():
@@ -381,11 +389,41 @@ def _initial(word):
     return fold(word)[:1]
 
 
-def name_regex(terms):
+def word_like(terms, corpus):
+    """The terms used more often as ordinary words than as names in the corpus
+    ('File' in 'Files:' and 'file'), which name_regex then matches only after a
+    given name or between hyphens, as in 'Michael File' or '-File-'."""
+    out = set()
+    for t in terms:
+        f = fold_case(t)
+        low = re.compile(rf"(?<![A-Za-z]){re.escape(f.lower())}s?(?![A-Za-z])")
+        cap = re.compile(rf"(?<![A-Za-z]){re.escape(f[:1].upper() + f[1:])}s?(?![A-Za-z])")
+        nl = nc = 0
+        for _, _l, cased, _f in corpus:
+            for c in cased:
+                if f[1:].lower() in c.lower():
+                    nl += len(low.findall(c))
+                    nc += len(cap.findall(c))
+        if nl > nc:
+            out.add(t)
+    return out
+
+
+def name_regex(terms, wordlike=()):
+    """Matches a surname written as a name (capitalized or in capitals), so that a
+    surname that is also a word ('File', 'Park', 'Miller') does not match the word."""
     if not terms:
         return None
-    alts = "|".join(sorted({re.escape(fold(t)) for t in terms}, key=len, reverse=True))
-    return re.compile(rf"(?<![a-z])(?:{alts})[a-z]{{0,3}}(?![a-z])")
+    alts = set()
+    for t in terms:
+        f = fold_case(t)
+        cap = f[:1].upper() + f[1:]
+        if t in wordlike:
+            alts.add(r"(?:(?<![A-Za-z])[A-Z][a-z]+\.? |(?<![A-Za-z])[A-Z]\. |-)" + re.escape(cap) + r"(?=[-_ ,;.)'\]]|$)")
+        else:
+            alts.add(r"(?<![A-Za-z])" + re.escape(cap) + r"[a-z]{0,3}(?![A-Za-z])")
+        alts.add(r"(?<![A-Za-z])" + re.escape(f.upper()) + r"[A-Z]{0,3}(?![A-Za-z])")
+    return re.compile("|".join(sorted(alts, key=len, reverse=True)))
 
 
 def place_keys(places, corpus, image_list):
@@ -398,7 +436,7 @@ def place_keys(places, corpus, image_list):
             if pf in fold(os.path.basename(p)):
                 for k, _ in keys_in_filename(os.path.basename(p)):
                     found[k] += 3
-        for _, lines, folded in corpus:
+        for _, lines, _c, folded in corpus:
             for line, fl in zip(lines, folded):
                 if pf not in fl:
                     continue
@@ -429,7 +467,7 @@ def years_in(line):
 def search(q, corpus, image_list):
     res = {"saved": [], "registers": defaultdict(lambda: {"mentions": 0, "ranges": [], "coverage": []}),
            "text": defaultdict(list), "sounds": {}, "saved_sound": []}
-    nre = name_regex(q["names"])
+    nre = name_regex(q["names"], q.get("wordlike", ()))
     sre = name_regex(q["sounds"])
     idre = re.compile("|".join(re.escape(i) for i in q["ids"])) if q["ids"] else None
     places = [fold(p) for p in q["places"]]
@@ -442,7 +480,7 @@ def search(q, corpus, image_list):
         base = os.path.basename(p)
         if re.search(r"(?i)-crop\b|-crop-", base):
             continue
-        fb = fold(base)
+        fb = fold_case(base)
         hit_name = bool(nre and nre.search(fb))
         if not hit_name and sre and sre.search(fb):
             res["saved_sound"].append(p)
@@ -458,22 +496,22 @@ def search(q, corpus, image_list):
             res["saved"].append((p, k, img, bool(hit_key), file_date(p)))
 
     # text
-    for path, lines, folded in corpus:
+    for path, lines, cased, folded in corpus:
         fdate = file_date(path)
-        for n, (line, fl) in enumerate(zip(lines, folded), 1):
+        for n, (line, fc, fl) in enumerate(zip(lines, cased, folded), 1):
             score, pos, why = 0, None, []
-            m = nre.search(fl) if nre else None
+            m = nre.search(fc) if nre else None
             if m:
                 score += 2
                 pos = m.start()
                 why.append("name")
             elif sre:
-                m = sre.search(fl)
+                m = sre.search(fc)
                 if m:
                     score += 1
                     pos = m.start()
                     why.append("sound-alike")
-                    word = re.match(r"[a-z]+", fl[m.start():]).group(0)
+                    word = re.match(r"[A-Za-z]+", fc[m.start():]).group(0).lower()
                     res["sounds"].setdefault(word, []).append((line_date(line, fdate), path, n, snippet(line, m.start(), 200)))
             if idre:
                 m = idre.search(line)
@@ -540,6 +578,8 @@ def report(q, res, people, caps):
     say("Query: " + q["label"])
     if q["names"]:
         say("  names searched: " + ", ".join(q["names"]))
+    if q.get("wordlike"):
+        say("  also ordinary words, so matched only after a given name or in a file name: " + ", ".join(sorted(q["wordlike"])))
     if q["sounds"]:
         say("  sound-alikes found in the corpus (Koelner Phonetik; check each): " + ", ".join(q["sounds"]))
     if q["place_keys"]:
@@ -657,7 +697,7 @@ def stale(corpus, image_list):
             if img is not None:
                 saved[(k, img)].append(p)
     out = []
-    for path, lines, _f in corpus:
+    for path, lines, _c, _f in corpus:
         if path not in ("open-questions.md", "tasks.md"):
             continue
         section = ""
@@ -745,7 +785,7 @@ def build_query(a, corpus, image_list):
         parts += [f"{flag} {v}" for v in vals]
     if a.year:
         parts.append(f"--year {a.year}")
-    q = dict(ids=list(people), names=names, sounds=sounds, places=a.place,
+    q = dict(ids=list(people), names=names, sounds=sounds, places=a.place, wordlike=word_like(names, corpus),
              keys=[(k[0], k[1]) for k in keys], key_ranges={(k[0], k[1]): k[2] for k in keys},
              place_keys=pkeys, years=years, label=" ".join(parts))
     return q, people
