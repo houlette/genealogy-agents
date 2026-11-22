@@ -465,6 +465,13 @@ def run_opencode(model, prompt, agent, timeout_min, budget):
 
 def dispatch(brief_path, role, backends=None, agent=None, timeout_min=45, budget=2.0):
     brief = open(brief_path).read()
+    if role == 'retrieve':
+        import prior_work
+        problems = prior_work.check_brief(brief)
+        if problems:
+            for p in problems:
+                print('dispatch: not sent: ' + p)
+            return 3
     task = os.path.splitext(os.path.basename(brief_path))[0]
     for backend in backends or ROLES[role]:
         kind, _, model = backend.partition(':')

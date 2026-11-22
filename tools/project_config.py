@@ -19,6 +19,9 @@ missing project.json means every default applies.
     bridge.port      port of the browser bridge daemon
     bridge.profile   Chrome profile the agents must work in; null allows any
     bridge.downloads folder Chrome saves downloads to
+    surname_variants lists of spellings of one surname, searched together by
+                     tools/prior_work.py, e.g. [["Seyler", "Seiler", "Sailer"]]
+    briefs_glob      where the earlier briefs are, for tools/prior_work.py
 """
 import copy
 import json
@@ -40,6 +43,8 @@ DEFAULTS = {
         "profile": None,
         "downloads": "~/Downloads",
     },
+    "surname_variants": [],
+    "briefs_glob": ["scratch/*/*brief*.md"],
 }
 
 

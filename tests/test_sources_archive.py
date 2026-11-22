@@ -54,5 +54,13 @@ class Manifest(unittest.TestCase):
         self.assertIn("*.JPG", args)
 
 
+
+class NewDuplicatesTest(unittest.TestCase):
+    def test_reports_only_new_identical_images(self):
+        old = {"sources/a.jpg": (10, "h1"), "sources/b.jpg": (10, "h2")}
+        rows = dict(old, **{"sources/c.jpg": (10, "h1"), "sources/d.jpg": (10, "h3")})
+        self.assertEqual(sources_archive.new_duplicates(old, rows), [("sources/c.jpg", "sources/a.jpg")])
+
+
 if __name__ == "__main__":
     unittest.main()

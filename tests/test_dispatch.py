@@ -1,4 +1,5 @@
 import base64
+import contextlib
 import datetime
 import io
 import json
@@ -44,7 +45,10 @@ class Base(unittest.TestCase):
             return []
         return [json.loads(l) for l in open(self.ledger) if l.strip()]
 
-    def brief(self, text='Fetch the thing.', name='brief-x.md'):
+    def brief(self, text=None, name='brief-x.md'):
+        if text is None:
+            text = ('Fetch the thing. @I1@.\nPrior work (tools/prior_work.py, %s, 0 hits): --person @I1@\nEnd of prior work.\n'
+                    % datetime.date.today().isoformat())
         p = os.path.join(self.tmp.name, name)
         open(p, 'w').write(text)
         return p
@@ -891,6 +895,19 @@ class CliTests(Base):
         with mock.patch('sys.stderr', io.StringIO()):
             code, _ = self.run_cli(['b.md', '--role', 'bogus'])
         self.assertEqual(code, 2)
+
+
+
+class PriorWorkCheckTest(unittest.TestCase):
+    def test_retrieve_brief_without_block_is_not_sent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, 'brief-y.md')
+            open(p, 'w').write('Fetch the deed of @I1@.')
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = dispatch.dispatch(p, 'retrieve', ['claude-api:haiku'])
+            self.assertEqual(code, 3)
+            self.assertIn("dispatch: not sent: the brief has no 'Prior work", buf.getvalue())
 
 
 if __name__ == '__main__':

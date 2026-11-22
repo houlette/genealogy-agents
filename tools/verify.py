@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unified verification tool: check_tree, make-tree-view, lint_prose and check_tasks in one call.
+"""Unified verification tool: check_tree, make-tree-view, lint_prose, check_tasks and prior_work --stale in one call.
 
 Usage:
     python3 tools/verify.py            # runs all 4 checks with standard options
@@ -68,6 +68,11 @@ def main():
     if code_tasks != 0:
         print("[FAIL] check_tasks.py found broken tables in tasks.md.")
         failed = True
+
+    # Step 5: prior_work.py --stale (open lists naming images already saved); notes only
+    code_stale, out_stale = run_step("prior_work", ["python3", "tools/prior_work.py", "--stale"])
+    if out_stale and "NOTE stale" in out_stale:
+        print(out_stale)
 
     if failed:
         sys.exit(1)

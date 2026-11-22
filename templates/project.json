@@ -9,5 +9,9 @@
     "port": 9333,
     "profile": null,
     "downloads": "~/Downloads"
-  }
+  },
+  "surname_variants": [],
+  "briefs_glob": [
+    "scratch/*/*brief*.md"
+  ]
 }

@@ -109,6 +109,19 @@ def write_manifest(root=PROJECT_DIR, manifest=None):
     return rows
 
 
+def new_duplicates(old, rows):
+    """New images whose SHA-256 matches an image already listed: (new path, earlier path).
+    Two entries on one page are often saved under two names on purpose, so this is a note."""
+    by_hash = {}
+    for p, (_, digest) in old.items():
+        by_hash.setdefault(digest, p)
+    out = []
+    for p in sorted(rows):
+        if p not in old and rows[p][1] in by_hash:
+            out.append((p, by_hash[rows[p][1]]))
+    return out
+
+
 def missing(paths, root=PROJECT_DIR, manifest=None):
     """The cited image paths that are neither on disk nor in the manifest."""
     manifest = manifest or os.path.join(root, settings()["manifest"])
@@ -184,7 +197,11 @@ def main():
     a = ap.parse_args()
     s = settings()
     if a.command == "manifest":
+        old = read_manifest(os.path.join(PROJECT_DIR, s["manifest"]))
         rows = write_manifest()
+        for new, earlier in new_duplicates(old, rows):
+            print(f"NOTE duplicate: {new} is byte-identical to {earlier}, saved earlier; "
+                  "keep both only if they are saved for different entries")
         print(f"sources_archive: {len(rows)} images in {s['manifest']}")
         return 0
     if a.command == "missing":
