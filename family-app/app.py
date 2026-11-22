@@ -37,6 +37,12 @@ EMAIL_BACKEND = os.environ.get("EMAIL_BACKEND", "console")
 MAIL_FROM = os.environ.get("MAIL_FROM", "Family History <family@example.com>")
 REPLY_TO = os.environ.get("REPLY_TO", ADMIN_EMAIL)
 SES_REGION = os.environ.get("SES_REGION", "us-east-1")
+# EMAIL_BACKEND=smtp: any mail server or sending service with SMTP over TLS, for example Resend
+# (smtp.resend.com, port 465, user "resend", password the API key).
+SMTP_HOST = os.environ.get("SMTP_HOST", "")
+SMTP_PORT = int(os.environ.get("SMTP_PORT") or 465)
+SMTP_USER = os.environ.get("SMTP_USER", "")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SECURE = BASE_URL.startswith("https://")
 
 COOKIE = "fh_session"
@@ -193,6 +199,28 @@ def send_email(to, subject, text):
                 FromEmailAddress=MAIL_FROM, Destination={"ToAddresses": [to]},
                 ReplyToAddresses=[REPLY_TO] if REPLY_TO else [],
                 Content={"Simple": {"Subject": {"Data": subject}, "Body": {"Text": {"Data": text}}}})
+            log.info("email sent to %s: %s", to, subject)
+        elif EMAIL_BACKEND == "smtp":
+            import smtplib
+            import ssl
+            from email.message import EmailMessage
+            from email.utils import formatdate, make_msgid
+            m = EmailMessage()
+            m["From"], m["To"], m["Subject"] = MAIL_FROM, to, subject
+            m["Date"], m["Message-ID"] = formatdate(localtime=False), make_msgid(domain=MAIL_FROM.rsplit("@", 1)[-1].strip("> "))
+            if REPLY_TO:
+                m["Reply-To"] = REPLY_TO
+            m.set_content(text)
+            ctx = ssl.create_default_context()
+            if SMTP_PORT == 465:
+                server = smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, context=ctx, timeout=30)
+            else:
+                server = smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=30)
+                server.starttls(context=ctx)
+            with server:
+                if SMTP_USER:
+                    server.login(SMTP_USER, SMTP_PASSWORD)
+                server.send_message(m)
             log.info("email sent to %s: %s", to, subject)
         else:
             log.info("EMAIL (console backend)\nTo: %s\nSubject: %s\n\n%s\n", to, subject, text)
