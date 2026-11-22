@@ -203,6 +203,8 @@ function viewClick(ev) {
   if (t.closest("[data-print]")) return window.print();
   if (t.closest("[data-add]")) { const f = $("#add"); if (f) { f.scrollIntoView({behavior: "smooth", block: "start"}); $("textarea", f).focus({preventScroll: true}); } return; }
   if (t.closest("[data-surprise]")) return surprise();
+  if (t.closest("[data-crumbs]")) return t.closest(".crumbs").classList.add("all");
+  if (t.closest("[data-closesel]")) return showSelCard(null);
   const li = t.closest(".panel li.placed");
   if (li && J.map && coords(li.dataset.pk)) J.map.flyTo(coords(li.dataset.pk), 10, {duration: 1});
 }
@@ -591,76 +593,191 @@ function tip(ev, html) {
 
 // ---------- family tree (fan chart) ----------
 let treeLegend = "";
+// The fan's centre, and the trail of centres from the reader (or the site's root) to it, shown as breadcrumbs.
+// The centre is in the address (#/tree/<id>); the trail is rebuilt from the tree when the page is reloaded.
+const FAN = {centre: null, trail: [], pick: null, paths: {}};
+const youName = () => ME.anchor === D.root && !ME.self ? ROOTNAME : "You";
+const crumbName = k => k === ME.anchor ? youName() : nameOf(k);
+function fanTrail(k) {
+  const t = FAN.trail, n = FAN.pick;
+  FAN.pick = null;
+  // Centred from a slice of the chart: the trail goes on through the people between the old centre and that slice,
+  // so a person reached by two lines (pedigree collapse) keeps the line the reader followed.
+  if (n && n.k === k && t[t.length - 1] === FAN.centre) { const up = []; for (let x = n; x.up; x = x.up) up.unshift(x.k); return (FAN.trail = [...t, ...up]); }
+  const i = t.indexOf(k);
+  if (i >= 0) return (FAN.trail = t.slice(0, i + 1));
+  if (t.length && parentsOf(t[t.length - 1]).includes(k)) return (FAN.trail = [...t, k]);
+  for (const base of [ME.anchor, D.root]) {
+    if (k === base) return (FAN.trail = [k]);
+    const {prev} = upPrev(base);
+    if (k in prev) { const out = [k]; while (out[0] !== base) out.unshift(prev[out[0]]); return (FAN.trail = out); }
+  }
+  return (FAN.trail = [k]);
+}
+function fanCrumbs() {
+  let t = FAN.trail;
+  if (t[0] !== ME.anchor && t[0] !== D.root) t = [ME.anchor, ...t];
+  if (t.length < 2) return "";
+  const long = t.length > 6;
+  const items = t.map((k, i) => `<li${long && i > 0 && i < t.length - 4 ? ' class="far"' : ""}>${i === t.length - 1
+    ? `<span aria-current="page">${esc(crumbName(k))}</span>` : `<a href="#/tree/${k}">${esc(crumbName(k))}</a>`}</li>`);
+  if (long) items.splice(1, 0, `<li class="gap"><button type="button" data-crumbs aria-label="Show all ${t.length} people on the way">&hellip;</button></li>`);
+  return `<nav class="crumbs" aria-label="The line from ${esc(crumbName(t[0]))} to the centre of the chart"><ol>${items.join("")}</ol></nav>`;
+}
 function showTree(root) {
   current = "tree"; stop();
+  fanTrail(root); FAN.centre = root;
   treeLegend = `<div class="fanlegend"><b>Colour: where each person was born</b>${countryKey()}<span><i style="border:1.5px dashed var(--ink);background:none"></i>Probable parents</span><span><i style="border:1.5px dotted var(--ink);background:none"></i>Parents a theory</span></div>`;
-  $("#view").innerHTML = `<div class="treeview"><div class="treebar">${treeSwitch("fan", root)}<span class="hint">Tap a name to see that person's ancestors.${root === ME.anchor ? "" : " Tap the centre to step back toward " + (ME.self ? "you" : esc(ROOTNAME)) + "."} Use + and − to zoom, and drag to move.</span></div><div class="fanwrap" id="fan"></div><aside class="panel" id="panel"></aside></div>`;
+  $("#view").innerHTML = `<div class="treeview"><div class="treebar">${treeSwitch("fan", root)}<span class="hint">Tap a name for details. Double-click a name, or choose "Centre the fan here", to put that person in the middle.${FAN.trail.length > 1 || root !== ME.anchor ? " Tap the centre to step back one generation." : ""} Use + and − to zoom, and drag to move.</span>${fanCrumbs()}</div><div class="fanwrap" id="fan"><div class="selcard" id="selcard" hidden></div></div><aside class="panel" id="panel"></aside></div>`;
   J.chain = []; J.map = null; J.line = null;
   drawFan(root);
   renderPanelLite(root);
 }
+// A person's two parents in fan order: the father first (clockwise), then the mother; a parent of unknown sex takes the free side.
+function fanParents(k) {
+  const ps = [...new Set(parentsOf(k))], sx = x => P[x]?.sx;
+  let fa = ps.find(x => sx(x) === "M") || null, mo = ps.find(x => sx(x) === "F") || null;
+  for (const x of ps) if (x !== fa && x !== mo) { if (!fa) fa = x; else if (!mo) mo = x; }
+  return [fa, mo];
+}
+// The longest form of a name that fits a slice: `len` along the text, `ht` across it, the font at most `cap`.
+// Two lines (first name over surname) in the inner rings; elsewhere one line, shortened to an initial and surname,
+// the surname or the initials; null when nothing would ever be readable.
+function fanLabel(nm, first, last, len, ht, cap, stack) {
+  const cw = 0.55, fs = Math.min(cap, ht * 0.8);
+  const two = Math.min(cap, ht / 2.3, len / (cw * Math.max(first.length, last.length, 1)));
+  const twoOk = first !== last && two >= Math.min(cap, 8);
+  if (stack && twoOk) return {fs: two, lines: [first, last]};
+  const fit = [nm, `${first[0]}. ${last}`].find(x => x.length * cw * fs <= len);
+  if (fit) return {fs, lines: [fit]};
+  if (twoOk) return {fs: two, lines: [first, last]};
+  if (last.length * cw * fs <= len) return {fs, lines: [last]};
+  const ini = (first[0] || "") + (first === last ? "" : last[0] || "");
+  const f2 = Math.min(fs, len / (cw * Math.max(ini.length, 1)));
+  return f2 >= 0.4 ? {fs: f2, lines: [ini]} : null;
+}
 function drawFan(root) {
-  // Up to 13 rings (12 generations of ancestors); the first view frames three to five generations, so the names
-  // can be read at the size of the screen, and the reader zooms out for the rest.
-  const depth = Math.max(0, ...Object.values(upMap(root)));
-  const G = Math.max(7, Math.min(13, depth + 1)), NS = "http://www.w3.org/2000/svg", wrap = $("#fan");
-  const r0 = 70, ring = [0, 70, 75, 75, 70, 65, 60, 55, 52, 50, 48, 46, 44];
-  const side = Math.min(wrap.clientWidth, wrap.clientHeight * 1.16), frame = side < 520 ? 3 : side < 1000 ? 4 : 5;
-  const R = r0 + ring.slice(1, G).reduce((a, b) => a + b, 0), R6 = r0 + ring.slice(1, frame + 1).reduce((a, b) => a + b, 0);
-  const cx = 0, cy = 0;
+  // Every generation the tree has. Each person's slice is shared between their parents by how much is known above
+  // each (the number of ends of line, where a person with no known parents counts as one), so the angle goes where
+  // the ancestry is known and an unknown parent takes none. In the first four rings each known parent keeps at least
+  // a quarter of the slice, so close family stays readable. A person reached by two lines (pedigree collapse) is drawn
+  // in each place. The first view frames three to five generations; the reader zooms out for the rest.
+  const NS = "http://www.w3.org/2000/svg", wrap = $("#fan");
+  const W = {}, busy = new Set();
+  const weight = k => {
+    if (k in W) return W[k];
+    if (busy.has(k)) return 1;   // a loop in the data (someone their own ancestor): count once and stop
+    busy.add(k);
+    const ps = fanParents(k).filter(Boolean), w = ps.length ? ps.reduce((a, x) => a + weight(x), 0) : 1;
+    busy.delete(k);
+    return (W[k] = w);
+  };
+  const onPath = (n, k) => { for (let x = n; x; x = x.up) if (x.k === k) return true; return false; };
   const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25; // 270 degrees, clockwise from lower left to lower right, open at the bottom
+  const gens = [[{k: root, s: a0, e: a1, up: null}]];
+  const MAX = 12000;   // slices; past this (heavy pedigree collapse) the outer generations are left off
+  let total = 0, cut = false;
+  for (;;) {
+    const g = gens.length, next = [];
+    for (const n of gens[g - 1]) {
+      const ps = fanParents(n.k).filter(x => x && !onPath(n, x));
+      if (!ps.length) continue;
+      let f = ps.length === 1 ? 1 : weight(ps[0]) / (weight(ps[0]) + weight(ps[1]));
+      if (ps.length === 2) { const m = g <= 4 ? 0.25 : 0.04; f = Math.max(m, Math.min(1 - m, f)); }
+      const mid = n.s + (n.e - n.s) * f;
+      next.push({k: ps[0], s: n.s, e: ps.length === 1 ? n.e : mid, up: n});
+      if (ps.length === 2) next.push({k: ps[1], s: mid, e: n.e, up: n});
+    }
+    if (!next.length) break;
+    if (total + next.length > MAX) { cut = true; break; }
+    total += next.length;
+    gens.push(next);
+  }
+  const G = gens.length;   // rings, the centre included
+  const ringW = g => g <= 12 ? [0, 70, 75, 75, 70, 65, 60, 55, 52, 50, 48, 46, 44][g] : Math.max(34, 44 - (g - 12) * 1.5);
+  const rad = [70]; for (let g = 1; g < G; g++) rad.push(rad[g - 1] + ringW(g));
+  const r0 = rad[0], least = r0 + 70 + 75 + 75;
+  const side = Math.min(wrap.clientWidth, wrap.clientHeight * 1.16), frame = side < 520 ? 3 : side < 1000 ? 4 : 5;
+  const R = Math.max(least, rad[G - 1]), R6 = Math.min(R, Math.max(least, rad[Math.min(frame, G - 1)]));
+  const cx = 0, cy = 0;
   const svg = document.createElementNS(NS, "svg");
   const full = {x: -R - 20, y: -R - 20, w: 2 * R + 40, h: R * 1.72 + 40}, first = {x: -R6 - 20, y: -R6 - 20, w: 2 * R6 + 40, h: R6 * 1.72 + 40};
   const el = (t, a, p = svg) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); p.appendChild(e); return e; };
   const pt = (r, a) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-  let slots = [[root]];
-  const childOf = {};
-  for (let g = 1; g < G; g++) slots.push(slots[g - 1].flatMap(k => { const ps = k ? parentsOf(k) : []; const fa = ps.find(x => P[x]?.sx === "M") || null, mo = ps.find(x => x !== fa) || null; if (fa) childOf[fa] = k; if (mo) childOf[mo] = k; return [fa, mo]; }));
-  let rIn = r0;
+  const times = {};
+  gens.forEach(row => row.forEach(n => { times[n.k] = (times[n.k] || 0) + 1; }));
+  FAN.paths = {};
   for (let g = 1; g < G; g++) {
-    const rOut = rIn + ring[g], n = 2 ** g, span = (a1 - a0) / n;
-    slots[g].forEach((k, i) => {
-      if (!k && g >= 7) return;
-      const s = a0 + i * span, e = s + span;
+    const rIn = rad[g - 1], rOut = rad[g];
+    for (const n of gens[g]) {
+      const {k, s, e} = n, span = e - s;
+      if (span * rOut < 0.02) continue;   // thinner than a hair even at the closest zoom
+      const big = span > Math.PI ? 1 : 0;
       const [x1, y1] = pt(rIn, s), [x2, y2] = pt(rOut, s), [x3, y3] = pt(rOut, e), [x4, y4] = pt(rIn, e);
-      const d = `M${x1},${y1} L${x2},${y2} A${rOut},${rOut} 0 0 1 ${x3},${y3} L${x4},${y4} A${rIn},${rIn} 0 0 0 ${x1},${y1}Z`;
-      const fill = k ? (known(k) ? colorFor(k) : css("--c-un")) : "transparent";
-      const link = k ? (P[childOf[k]]?.link || "") : "";
-      const path = el("path", {d, fill, opacity: k ? 1 : .25, stroke: k ? css("--surface") : css("--line"), style: `stroke-width:${Math.min(1.5, rOut * span * 0.12).toFixed(3)}`});
-      if (/probable|hypothesis/.test(link)) { path.setAttribute("stroke", css("--ink")); path.setAttribute("stroke-opacity", ".7"); const sw = Math.min(1.5, rOut * span * 0.12); path.setAttribute("stroke-dasharray", /probable/.test(link) ? `${sw * 3.3} ${sw * 2}` : `${sw} ${sw * 2}`); }
-      if (!k) return;
-      path.addEventListener("click", () => { if (FZ.dragged) return; tip(); if (known(k)) location.hash = "#/tree/" + k; });
-      path.addEventListener("pointerenter", ev => tip(ev, `<b>${esc(nameOf(k))}</b><br>${esc(yearsOf(k))}<br>${esc(relLabel(k))}${/probable/.test(link) ? "<br><i>Probable parent of " + esc(nameOf(childOf[k])) + "</i>" : /hypothesis/.test(link) ? "<br><i>A theory, not yet shown by a record</i>" : ""}`));
+      const d = `M${x1},${y1} L${x2},${y2} A${rOut},${rOut} 0 ${big} 1 ${x3},${y3} L${x4},${y4} A${rIn},${rIn} 0 ${big} 0 ${x1},${y1}Z`;
+      const fill = known(k) ? colorFor(k) : css("--c-un");
+      const link = P[n.up.k]?.link || "", sw = Math.min(1.5, rOut * span * 0.12);
+      const path = el("path", {d, fill, "data-k": k, stroke: css("--surface"), style: `stroke-width:${sw.toFixed(3)}`});
+      if (/probable|hypothesis/.test(link)) { path.setAttribute("stroke", css("--ink")); path.setAttribute("stroke-opacity", ".7"); path.setAttribute("stroke-dasharray", /probable/.test(link) ? `${sw * 3.3} ${sw * 2}` : `${sw} ${sw * 2}`); }
+      (FAN.paths[k] ||= []).push(path);
+      path.addEventListener("click", () => { if (FZ.dragged) return; tip(); fanSelect(k, n); });
+      path.addEventListener("dblclick", () => { if (FZ.dragged || !known(k)) return; FAN.pick = n; location.hash = "#/tree/" + k; });
+      path.addEventListener("pointerenter", ev => tip(ev, `<b>${esc(nameOf(k))}</b><br>${esc(yearsOf(k))}<br>${esc(relLabel(k))}${/probable/.test(link) ? "<br><i>Probable parent of " + esc(nameOf(n.up.k)) + "</i>" : /hypothesis/.test(link) ? "<br><i>A theory, not yet shown by a record</i>" : ""}${times[k] > 1 ? `<br><i>In ${times[k]} places on this chart: descended from by more than one line</i>` : ""}`));
       path.addEventListener("pointerleave", () => tip());
+      if (!known(k)) continue;
+      // Labels: along the arc where the slice is wider than it is deep, else along the radius; the font fits the slice.
       const mid = (s + e) / 2, rm = (rIn + rOut) / 2, [tx, ty] = pt(rm, mid);
-      const nm = nameOf(k), first = nm.split(" ")[0], last = P[k]?.sn || nm.split(" ").slice(-1)[0];
-      let deg = mid * 180 / Math.PI; if (g >= 5) { deg = deg + (Math.cos(mid) < 0 ? 180 : 0); } else { deg = deg + 90; if (Math.sin(mid) > 0) deg += 180; }
-      if (!known(k)) return;
-      // Radial labels: the font fits the slice's width; the text is the longest form that fits the ring's depth.
-      const fs = g <= 2 ? 22 : g === 3 ? 17 : g === 4 ? 13.5 : Math.min(g === 5 ? 10.5 : 9.5, rm * span * 0.72);
-      const t = el("text", {x: tx, y: ty, "text-anchor": "middle", "dominant-baseline": "middle", "font-size": fs.toFixed(3), "data-fs": fs, transform: `rotate(${deg} ${tx} ${ty})`, style: `fill:${inkOn(fill)}`});
-      if (g <= 4) {
-        el("tspan", {x: tx, dy: "-0.5em"}, t).textContent = first;
-        el("tspan", {x: tx, dy: "1.15em"}, t).textContent = last;
-      } else {
-        const room = (rOut - rIn) * 0.9;
-        t.textContent = [g >= 6 ? nm : null, `${first[0]}. ${last}`, last].filter(Boolean).find(x => x.length * fs * 0.55 <= room) || last;
-      }
-    });
-    rIn = rOut;
+      const nm = nameOf(k), fn = nm.split(" ")[0], last = P[k]?.sn || nm.split(" ").slice(-1)[0];
+      const arcW = rm * Math.min(span, Math.PI) * 0.9, depth = (rOut - rIn) * 0.9, along = arcW >= depth * 1.15;
+      const cap0 = g <= 2 ? 22 : g === 3 ? 17 : g === 4 ? 13.5 : g === 5 ? 10.5 : 9.5, cap = along ? Math.max(cap0, Math.min(17, depth / 2.6)) : cap0;
+      const lab = fanLabel(nm, fn, last, along ? arcW : depth, along ? depth : arcW, cap, g <= 4);
+      if (!lab) continue;
+      let deg = mid * 180 / Math.PI;
+      if (along) { deg += 90; if (Math.sin(mid) > 0) deg += 180; } else if (Math.cos(mid) < 0) deg += 180;
+      const t = el("text", {x: tx, y: ty, "text-anchor": "middle", "dominant-baseline": "middle", "font-size": lab.fs.toFixed(3), "data-fs": lab.fs, transform: `rotate(${deg.toFixed(2)} ${tx} ${ty})`, style: `fill:${inkOn(fill)}`});
+      if (lab.lines.length === 2) {
+        el("tspan", {x: tx, dy: "-0.5em"}, t).textContent = lab.lines[0];
+        el("tspan", {x: tx, dy: "1.15em"}, t).textContent = lab.lines[1];
+      } else t.textContent = lab.lines[0];
+    }
   }
   const c = el("circle", {cx, cy, r: r0 - 4, fill: known(root) ? colorFor(root) : css("--c-un"), cursor: "pointer"});
-  // Step back toward the reader: the child of the centre person who lies on the reader's line.
-  const toward = root === ME.anchor ? null : childrenOf(root).find(x => x === ME.anchor || root in upMap(ME.anchor) && x in upMap(ME.anchor)) || null;
+  // Step back toward the reader: the previous centre on the trail, or the child of the centre person on the reader's line.
+  const tr = FAN.trail;
+  const toward = tr.length > 1 && tr[tr.length - 1] === root ? tr[tr.length - 2]
+    : root === ME.anchor ? null : childrenOf(root).find(x => x === ME.anchor || root in upMap(ME.anchor) && x in upMap(ME.anchor)) || null;
   if (toward) { c.style.cursor = "pointer"; c.addEventListener("click", () => { location.hash = "#/tree/" + toward; }); }
   else c.style.cursor = "default";
-  c.addEventListener("pointerenter", ev => tip(ev, toward ? `Back to ${esc(nameOf(toward))}` : `<b>${esc(nameOf(root))}</b>`));
+  c.addEventListener("pointerenter", ev => tip(ev, toward ? `Back to ${esc(crumbName(toward))}` : `<b>${esc(crumbName(root))}</b>`));
   c.addEventListener("pointerleave", () => tip());
   const t = el("text", {x: cx, y: cy, "text-anchor": "middle", "font-size": 20, "data-fs": 20, "pointer-events": "none", style: `fill:${inkOn(known(root) ? colorFor(root) : css("--c-un"))}`});
-  el("tspan", {x: cx, dy: "-0.4em"}, t).textContent = nameOf(root).split(" ")[0];
-  el("tspan", {x: cx, dy: "1.2em"}, t).textContent = known(root) ? (P[root].sn || "") : "";
+  const cn = known(root) ? [firstName(root), P[root].sn || ""] : root === ME.anchor ? [youName(), ""] : ["Living", "relative"];
+  el("tspan", {x: cx, dy: cn[1] ? "-0.4em" : "0.35em"}, t).textContent = cn[0];
+  el("tspan", {x: cx, dy: "1.2em"}, t).textContent = cn[1];
   wrap.appendChild(svg);
-  fanZoom(svg, wrap, full, first, G - 1);
+  fanZoom(svg, wrap, full, first, G - 1, cut ? `The first ${G - 1} generations` : null);
+}
+// A tapped slice: outlined everywhere the person appears, with their details in the panel (and, on a phone, in a card on the chart).
+function fanSelect(k, n) {
+  if (!known(k)) return;
+  FAN.pick = n;
+  document.querySelectorAll("#fan .selo").forEach(o => o.remove());
+  (FAN.paths[k] || []).forEach(p => {
+    const o = p.cloneNode(false);
+    o.removeAttribute("stroke-dasharray"); o.removeAttribute("stroke-opacity");
+    o.setAttribute("class", "selo"); o.setAttribute("fill", "none"); o.setAttribute("stroke", css("--ink")); o.removeAttribute("style");
+    p.ownerSVGElement.appendChild(o);
+  });
+  renderPanelLite(k);
+  showSelCard(k);
+}
+function showSelCard(k) {
+  const c = $("#selcard"); if (!c) return;
+  if (!k || !known(k)) { c.hidden = true; return; }
+  const rel = relLabel(k), first = esc(firstName(k));
+  c.hidden = false;
+  c.innerHTML = `<button type="button" class="x" data-closesel aria-label="Close">&times;</button>${rel ? `<div class="rel">${esc(rel)}</div>` : ""}<b>${esc(P[k].n)}</b> <span class="dates">${esc(yearsOf(k))}</span>
+    <div class="row"><a class="btn" href="#/p/${k}">Open ${first}'s page</a>${current === "tree" && k !== FAN.centre ? `<a class="btn ghost" href="#/tree/${k}">Centre the fan here</a>` : ""}</div>`;
 }
 // Zoom and pan for the fan chart: wheel, pinch, drag, and buttons. Labels too small to read are hidden.
 const FZ = {dragged: false};
@@ -713,15 +830,16 @@ function renderPanelLite(k) {
   if (!known(k)) {
     panel.innerHTML = `<h2>Your family tree</h2><p class="intro">${current === "kin"
       ? "Your ancestors run up the chart in couples. Under each person are their brothers and sisters, with any of their children the research has found. Choose how far back to go at the top; tap anyone for details."
-      : "The chart shows up to twelve generations of ancestors where we know them; zoom out to see the outer rings. Colours show where each person was born. Tap a name to put that person in the centre."}</p>${treeLegend}`;
+      : "The chart shows every generation of ancestors the research has found; zoom out to see the outer rings. A branch where more is known gets more of the circle. Colours show where each person was born. Tap a name for details, and double-click it to put that person in the centre."}</p>${treeLegend}`;
     return;
   }
   const first = esc(firstName(k));
   panel.innerHTML = `<div class="rel">${esc(relLabel(k))}</div><h2>${esc(p.n)}</h2><div class="dates">${esc(yearsOf(k))}</div>
     ${p.intro ? `<p class="intro">${esc(p.intro)}</p>` : ""}
     <p><a class="btn" href="#/p/${k}">Open ${first}'s page &rsaquo;</a></p>
-    <p class="treebtns"><a class="btn ghost" href="#/tree/${k}">${first}'s ancestors</a> <a class="btn ghost" href="#/kin/${k}">${first}'s family tree</a></p>
-    <p class="hint">${current === "kin" ? `Each couple's children are shown beneath them: the one on the line and their brothers and sisters, with any children of theirs that the research has found. Relationships are to ${ME.self || ME.anchor !== D.root ? "you" : esc(ROOTNAME)}.` : `The chart shows ${first}'s ancestors, up to twelve generations back where we know them. Zoom out to see the outer rings.`}</p>
+    <p class="treebtns">${current !== "tree" ? `<a class="btn ghost" href="#/tree/${k}">${first}'s ancestors</a>` : k !== FAN.centre ? `<a class="btn ghost" href="#/tree/${k}">Centre the fan here</a>` : ""} <a class="btn ghost" href="#/kin/${k}">${first}'s family tree</a></p>
+    <p class="hint">${current === "kin" ? `Each couple's children are shown beneath them: the one on the line and their brothers and sisters, with any children of theirs that the research has found. Relationships are to ${ME.self || ME.anchor !== D.root ? "you" : esc(ROOTNAME)}.`
+      : k === FAN.centre ? `The chart shows ${first}'s ancestors, every generation the research has found. Zoom out to see the outer rings.` : `Choose "Centre the fan here", or double-click ${first}'s name in the chart, to see ${first}'s ancestors in the middle.`}</p>
     ${treeLegend}`;
 }
 const countryKey = () => COUNTRIES.map(([v, t]) => `<span><i style="background:var(${v})"></i>${t}</span>`).join("");
