@@ -16,7 +16,7 @@ The agents work in a git repository that holds the tree as a GEDCOM file, the sa
 
 ## Starting a project
 
-You need Python 3.10 or later, git, and Pillow (`pip install Pillow`) for image checks and crops. The browser bridge also needs Node.js and a recent Chrome; the model tools need API keys only if you use them; the website needs `pip install markdown`, and its sign-in app the packages in `family-app/requirements.txt` and a server with Docker.
+You need Python 3.10 or later, git, and Pillow (`pip install Pillow`) for image checks and crops. The browser bridge also needs Node.js and a recent Chrome; the model tools need API keys only if you use them, or, for Gemini, a Google AI plan with the Antigravity CLI (`agy`) and `"gemini_route": "plan"` in `project.json`; the website needs `pip install markdown`, and its sign-in app the packages in `family-app/requirements.txt` and a server with Docker.
 
 ```bash
 git clone https://github.com/houlette/genealogy-agents.git

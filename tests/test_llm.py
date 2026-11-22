@@ -530,5 +530,77 @@ class CheckAndMainTests(TempBase):
         self.assertIn('One-shot calls', buf.getvalue())
 
 
+
+class PlanRouteTests(TempBase):
+    """gemini_route "plan": gemini calls go through agy first, the API only on a quota error."""
+
+    def setUp(self):
+        super().setUp()
+        for p in (mock.patch.object(llm, 'STATE', os.path.join(self.tmp.name, 'quota.json')),
+                  mock.patch.object(llm.shutil, 'which', return_value='/usr/local/bin/agy')):
+            p.start()
+            self.addCleanup(p.stop)
+        self.calls = []
+
+    def fake_run(self, reply, stderr=''):
+        def run(cmd, cwd=None, **kw):
+            self.calls.append({'cmd': cmd, 'cwd': cwd, 'files': sorted(os.listdir(cwd))})
+            return types.SimpleNamespace(stdout=json.dumps(reply) + '\n', stderr=stderr, returncode=0)
+        return mock.patch.object(llm.subprocess, 'run', side_effect=run)
+
+    OK = {'status': 'SUCCESS', 'response': 'Juni 5. Dietrich', 'usage': {'input_tokens': 1500, 'output_tokens': 600,
+                                                                       'cache_read_tokens': 900}}
+
+    @unittest.skipIf(Image is None, 'Pillow missing')
+    def test_plan_used_with_image_in_empty_folder(self):
+        img = os.path.join(self.tmp.name, 'crop.png')
+        Image.new('RGB', (50, 20), 'white').save(img)
+        with mock.patch.dict(os.environ, {'LLM_GEMINI_ROUTE': 'plan'}), self.fake_run(self.OK), \
+                mock.patch.object(llm, '_post') as post:
+            r = llm.call('argon', 'Read it.', 'Transcribe.', images=[img], task='t')
+        post.assert_not_called()
+        self.assertEqual(r['text'], 'Juni 5. Dietrich')
+        self.assertEqual(r['cost'], 0.0)
+        self.assertEqual(r['model'], 'gemini-4-argon-high')
+        call = self.calls[0]
+        self.assertEqual(call['files'], ['image1.jpg'])
+        self.assertNotEqual(os.path.realpath(call['cwd']), os.path.realpath(llm.ROOT))
+        self.assertIn('--sandbox', call['cmd'])
+        self.assertEqual(call['cmd'][call['cmd'].index('--model') + 1], 'gemini-4-argon-high')
+        row = self.rows()[-1]
+        self.assertEqual((row['backend'], row['outcome'], row['cost']), ('agy', 'ok', 0.0))
+        self.assertGreater(row['list_cost'], 0)
+
+    def test_quota_falls_back_to_api_and_is_remembered(self):
+        quota = {'error': 'RESOURCE_EXHAUSTED: quota used up. Resets in 3h20m'}
+        api = Resp(body={'candidates': [{'content': {'parts': [{'text': 'from api'}]}, 'finishReason': 'STOP'}],
+                         'usageMetadata': {'promptTokenCount': 10, 'candidatesTokenCount': 5}})
+        with mock.patch.dict(os.environ, {'LLM_GEMINI_ROUTE': 'plan', 'GEMINI_API_KEY': 'k'}), \
+                self.fake_run(quota), mock.patch.object(llm, '_post', return_value=api.json()):
+            r = llm.call('argon', 's', 't')
+            self.assertEqual(r['text'], 'from api')
+            self.assertTrue(llm.plan_blocked())
+            llm.call('argon', 's', 't')
+        self.assertEqual(len(self.calls), 1)  # the second call skipped agy
+        outcomes = [(x['backend'], x['outcome'][:5]) for x in self.rows()]
+        self.assertEqual(outcomes[0], ('agy', 'quota'))
+
+    def test_other_failure_is_raised_not_sent_to_api(self):
+        with mock.patch.dict(os.environ, {'LLM_GEMINI_ROUTE': 'plan', 'GEMINI_API_KEY': 'k'}), \
+                self.fake_run({'status': 'ERROR', 'error': 'model overloaded'}), \
+                mock.patch.object(llm, '_post') as post:
+            with self.assertRaises(llm.LLMError):
+                llm.call('argon', 's', 't')
+        post.assert_not_called()
+
+    def test_default_route_is_api(self):
+        with mock.patch.object(llm.cfg, 'GEMINI_ROUTE', 'api', create=True):
+            self.assertFalse(llm.use_plan(llm.MODELS['argon']))
+
+    def test_non_gemini_never_uses_plan(self):
+        with mock.patch.dict(os.environ, {'LLM_GEMINI_ROUTE': 'plan'}):
+            self.assertFalse(llm.use_plan(llm.MODELS['opus']))
+            self.assertTrue(llm.use_plan(llm.MODELS['neon']))
+
 if __name__ == '__main__':
     unittest.main()

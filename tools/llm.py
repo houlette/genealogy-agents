@@ -14,6 +14,17 @@ Keys are read from the environment or from the keyfile named in project.json
 ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY. A gemini model falls
 back to OpenRouter when GEMINI_API_KEY is not set.
 
+A project whose project.json sets "gemini_route": "plan" sends each gemini
+call first through the owner's Google AI plan, with the Antigravity CLI (agy)
+headless in an empty temporary folder, so the worker sees only the prompt and
+the images; its model name is the "agy" field in models.json. Those calls cost
+nothing extra and are logged with backend "agy" and cost 0 (list_cost is what
+the API would have charged). When the plan's quota is used up the call goes to
+the API key instead, and agy is skipped until the reset time, kept in
+scratch/dispatch/quota.json as tools/dispatch.py does. Any other agy failure
+is raised as an error, never retried on the API silently. The environment
+variable LLM_GEMINI_ROUTE (plan or api) overrides the setting for one run.
+
     python3 tools/llm.py --check    # which keys are set; test each model id
 
 Prompts sent through this module go to outside services. Do not put the owner's
@@ -26,7 +37,10 @@ import datetime
 import io
 import json
 import os
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -35,6 +49,8 @@ sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import project_config as cfg  # noqa: E402
 
 KEYFILE = cfg.KEYFILE
+STATE = os.path.join(ROOT, 'scratch', 'dispatch', 'quota.json')  # shared with tools/dispatch.py
+AGY_TIMEOUT_MIN = 15
 MODELS = {k: v for k, v in json.load(open(os.path.join(ROOT, 'tools', 'models.json'))).items()
           if not k.startswith('_')}
 
@@ -129,6 +145,8 @@ def _gemini(spec, system, text, images, effort, max_tokens):
     body = {'contents': [{'role': 'user', 'parts': parts}],
             'systemInstruction': {'parts': [{'text': system}]},
             'generationConfig': {'maxOutputTokens': max_tokens}}
+    if spec.get('thinking'):  # Neon at its default or with thinkingBudget thinks to maxOutputTokens and returns no text; thinkingLevel works (20 Nov 2026)
+        body['generationConfig']['thinkingConfig'] = spec['thinking']
     r = _post(f'https://generativelanguage.googleapis.com/v1beta/models/{spec["id"]}:generateContent',
               {'x-goog-api-key': key('GEMINI_API_KEY')}, body)
     cands = r.get('candidates') or []
@@ -165,6 +183,85 @@ def _openrouter(spec, system, text, images, effort, max_tokens, model_id=None):
     return out, usage, f'{r["choices"][0].get("finish_reason")} via {served}'
 
 
+class PlanQuota(LLMError):
+    """The Google plan's quota is used up; the call may go to the API instead."""
+
+
+def _plan_state():
+    try:
+        return json.load(open(STATE))
+    except (OSError, ValueError):
+        return {}
+
+
+def plan_blocked():
+    """The time agy's quota resets, if it is used up now; else None."""
+    until = _plan_state().get('agy')
+    return until if until and until > datetime.datetime.now().isoformat() else None
+
+
+def note_plan_quota(message):
+    import re
+    m = re.search(r'Resets in (?:(\d+)h)?(?:(\d+)m)?', message or '')
+    wait = (datetime.timedelta(hours=int(m.group(1) or 0), minutes=int(m.group(2) or 0))
+            if m and (m.group(1) or m.group(2)) else datetime.timedelta(hours=5))
+    state = _plan_state()
+    state['agy'] = (datetime.datetime.now() + wait).isoformat(timespec='minutes')
+    os.makedirs(os.path.dirname(STATE), exist_ok=True)
+    json.dump(state, open(STATE, 'w'), indent=1)
+
+
+def use_plan(spec):
+    """True when this gemini model should go through the owner's Google plan first."""
+    route_setting = (os.environ.get('LLM_GEMINI_ROUTE') or getattr(cfg, 'GEMINI_ROUTE', 'api') or 'api').lower()
+    return (route_setting == 'plan' and spec.get('provider') == 'gemini' and bool(spec.get('agy'))
+            and bool(shutil.which('agy')) and not plan_blocked())
+
+
+def _last_json(text):
+    for line in reversed((text or '').strip().splitlines()):
+        line = line.strip()
+        if line.startswith('{'):
+            try:
+                return json.loads(line)
+            except ValueError:
+                continue
+    return {}
+
+
+def _agy(spec, system, text, image_paths, max_side):
+    """One headless agy turn in an empty folder holding only the images."""
+    with tempfile.TemporaryDirectory(prefix='llm-agy-') as work:
+        names = []
+        for i, path in enumerate(image_paths, 1):
+            _, data = encode_image(path, max_side)
+            names.append(f'image{i}.jpg')
+            with open(os.path.join(work, names[-1]), 'wb') as f:
+                f.write(base64.b64decode(data))
+        look = (f'Open these image files in this folder with your file viewer, in this order: {", ".join(names)}. '
+                if names else '')
+        prompt = (f'{system}\n\n{look}Do not run shell commands, and do not open, search or write any other file. '
+                  f'Answer in your reply only.\n\n{text}')
+        cmd = ['agy', '-p', prompt, '--model', spec['agy'], '--output-format', 'json', '--sandbox',
+               '--print-timeout', f'{AGY_TIMEOUT_MIN}m']
+        try:
+            p = subprocess.run(cmd, cwd=work, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                               timeout=AGY_TIMEOUT_MIN * 60 + 120)
+        except subprocess.TimeoutExpired:
+            raise LLMError(f'agy timed out after {AGY_TIMEOUT_MIN} minutes')
+    r = _last_json(p.stdout)
+    err = r.get('error') or ''
+    if not r:
+        err = (p.stderr or p.stdout or f'agy exited {p.returncode} with no output')[-400:]
+    if 'RESOURCE_EXHAUSTED' in (p.stdout + p.stderr) or 'quota' in str(err).lower():
+        raise PlanQuota(f'agy quota: {str(err)[:300]}')
+    if err or r.get('status') not in (None, 'SUCCESS') or not r.get('response'):
+        raise LLMError(f'agy: {str(err or r.get("status") or "empty reply")[:300]}')
+    u = r.get('usage') or {}
+    usage = {'in': u.get('input_tokens', 0), 'out': u.get('output_tokens', 0), 'cached': u.get('cache_read_tokens', 0)}
+    return r['response'], usage, r.get('status')
+
+
 def route(name):
     """Return (provider, spec) for a model key, falling back to OpenRouter for gemini without a key."""
     spec = MODELS[name]
@@ -176,6 +273,24 @@ def route(name):
 
 def call(name, system, text, images=(), effort='high', max_tokens=16000, task='', max_side=2000):
     """Run one request. Returns {'text', 'usage', 'cost', 'model', 'stop'}; raises LLMError on failure."""
+    if use_plan(MODELS[name]):
+        spec = MODELS[name]
+        started = time.time()
+        try:
+            out, usage, stop = _agy(spec, system, text, images, max_side)
+        except PlanQuota as e:
+            note_plan_quota(str(e))
+            log(dict(kind='call', task=task, backend='agy', model=spec['agy'], outcome=f'quota: {e}'[:300],
+                     seconds=round(time.time() - started, 1)))
+        except LLMError as e:
+            log(dict(kind='call', task=task, backend='agy', model=spec['agy'], outcome=f'error: {e}'[:300],
+                     seconds=round(time.time() - started, 1)))
+            raise
+        else:
+            log(dict(kind='call', task=task, backend='agy', model=spec['agy'], outcome='ok', stop=stop,
+                     tokens_in=usage['in'], tokens_out=usage['out'], tokens_cached=usage['cached'],
+                     cost=0.0, list_cost=cost_of(spec, usage), seconds=round(time.time() - started, 1)))
+            return {'text': out, 'usage': usage, 'cost': 0.0, 'model': spec['agy'], 'stop': stop}
     provider, spec = route(name)
     needed = {'anthropic': 'ANTHROPIC_API_KEY', 'gemini': 'GEMINI_API_KEY', 'openrouter': 'OPENROUTER_API_KEY'}[provider]
     if not key(needed):

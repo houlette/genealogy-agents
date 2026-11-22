@@ -13,5 +13,6 @@
   "surname_variants": [],
   "briefs_glob": [
     "scratch/*/*brief*.md"
-  ]
+  ],
+  "gemini_route": "api"
 }

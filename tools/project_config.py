@@ -22,6 +22,10 @@ missing project.json means every default applies.
     surname_variants lists of spellings of one surname, searched together by
                      tools/prior_work.py, e.g. [["Seyler", "Seiler", "Sailer"]]
     briefs_glob      where the earlier briefs are, for tools/prior_work.py
+    gemini_route     "plan" sends Gemini calls in tools/llm.py through the
+                     owner's Google AI plan (the Antigravity CLI, agy) first
+                     and falls back to the API key only when the plan's quota
+                     is used up; "api" (the default) uses the API key only
 """
 import copy
 import json
@@ -45,6 +49,7 @@ DEFAULTS = {
     },
     "surname_variants": [],
     "briefs_glob": ["scratch/*/*brief*.md"],
+    "gemini_route": "api",
 }
 
 
@@ -73,6 +78,7 @@ TREE = os.path.join(PROJECT_DIR, CONFIG["tree"])
 LIVING_CUTOFF = CONFIG["living_cutoff"] or date.today().year - 100
 KEYFILE = os.path.expanduser(CONFIG["keyfile"])
 BRIDGE = CONFIG["bridge"]
+GEMINI_ROUTE = CONFIG["gemini_route"]
 
 if __name__ == "__main__":
     json.dump({**CONFIG, "_project_dir": PROJECT_DIR, "_living_cutoff_in_force": LIVING_CUTOFF},
